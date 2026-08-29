@@ -22,6 +22,8 @@ services:
       ACTIAN_VECTORAI_URL: http://vectorai:6573
     ports:
       - "8080:8080"
+    volumes:
+      - ./data:/app/data
     depends_on:
       - vectorai
     restart: unless-stopped

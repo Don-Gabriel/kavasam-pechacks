@@ -209,6 +209,10 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 
 The first consented safety request creates `kavasam_scam_patterns`, upserts the built-in prototypes, and performs a real Actian nearest-neighbor search. Full setup and production configuration are in [docs/ACTIAN_VECTORAI_SETUP.md](docs/ACTIAN_VECTORAI_SETUP.md).
 
+Docker Compose persists the gateway SQLite database under the ignored local
+`data/` directory and the Actian index under `actian_data/`. Recreating either
+container therefore keeps local demo data and vector indexes intact.
+
 ## Run the gateway manually
 
 ```powershell
