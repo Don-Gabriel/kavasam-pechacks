@@ -8,11 +8,6 @@ __pycache__/
 htmlcov/
 .coverage
 
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
-
 # Trace Commons local submission artifacts
 ids.json
 attestation.jws
@@ -22,8 +17,10 @@ attestation.jws
 .artifacts/
 
 # Ruflo/Codex local coordination state
+.claude/
 .claude-flow/
 .swarm/
+ruvector.db
 
 # Editors and operating systems
 .idea/

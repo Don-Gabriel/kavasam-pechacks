@@ -53,14 +53,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", tags=["operations"])
     def health() -> dict[str, object]:
+        gemini_api_keys = active_settings.configured_gemini_api_keys
+        elevenlabs_api_keys = active_settings.configured_elevenlabs_api_keys
         return {
             "status": "ok",
             "environment": active_settings.environment,
-            "ai": "gemini" if active_settings.gemini_api_key else "rules-only",
+            "ai": "gemini" if gemini_api_keys else "rules-only",
             "integrations": {
-                "gemini": bool(active_settings.gemini_api_key),
+                "gemini": bool(gemini_api_keys),
                 "n8n": bool(active_settings.n8n_guardian_webhook_url),
-                "elevenlabs": bool(active_settings.elevenlabs_api_key),
+                "elevenlabs": bool(elevenlabs_api_keys),
             },
         }
 

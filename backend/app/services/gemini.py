@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -17,11 +17,15 @@ class GeminiAssessment(BaseModel):
     recommended_action: str = Field(min_length=2, max_length=500)
 
 
-@dataclass(frozen=True, slots=True)
+_KEY_FALLBACK_STATUS_CODES = frozenset({401, 403, 429})
+
+
+@dataclass(slots=True)
 class GeminiFraudClient:
-    api_key: str
+    api_keys: tuple[str, ...]
     model: str
     timeout_seconds: float = 12.0
+    _active_key_index: int = field(default=0, init=False, repr=False)
 
     async def analyze_text(self, text: str, language: str) -> GeminiAssessment | None:
         payload = {
@@ -111,16 +115,30 @@ class GeminiFraudClient:
         endpoint = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         )
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.post(
-                    endpoint,
-                    headers={"x-goog-api-key": self.api_key},
-                    json=payload,
-                )
-                response.raise_for_status()
-            body: dict[str, Any] = response.json()
-            raw_text = body["candidates"][0]["content"]["parts"][0]["text"]
-            return GeminiAssessment.model_validate(json.loads(raw_text))
-        except (httpx.HTTPError, KeyError, IndexError, json.JSONDecodeError, ValidationError):
-            return None
+        for offset in range(len(self.api_keys)):
+            key_index = (self._active_key_index + offset) % len(self.api_keys)
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                    response = await client.post(
+                        endpoint,
+                        headers={"x-goog-api-key": self.api_keys[key_index]},
+                        json=payload,
+                    )
+                    response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code in _KEY_FALLBACK_STATUS_CODES:
+                    continue
+                return None
+            except httpx.HTTPError:
+                return None
+
+            try:
+                body: dict[str, Any] = response.json()
+                raw_text = body["candidates"][0]["content"]["parts"][0]["text"]
+                assessment = GeminiAssessment.model_validate(json.loads(raw_text))
+            except (KeyError, IndexError, json.JSONDecodeError, ValidationError):
+                return None
+
+            self._active_key_index = key_index
+            return assessment
+        return None

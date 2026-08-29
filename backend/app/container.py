@@ -28,9 +28,10 @@ class AppContainer:
     @classmethod
     def build(cls, settings: Settings) -> AppContainer:
         repository = InMemoryRepository()
+        gemini_api_keys = settings.configured_gemini_api_keys
         gemini = (
-            GeminiFraudClient(settings.gemini_api_key, settings.gemini_model)
-            if settings.gemini_api_key
+            GeminiFraudClient(gemini_api_keys, settings.gemini_model)
+            if gemini_api_keys
             else None
         )
         automation = (
@@ -41,13 +42,14 @@ class AppContainer:
             if settings.n8n_guardian_webhook_url
             else None
         )
+        elevenlabs_api_keys = settings.configured_elevenlabs_api_keys
         voice = (
             ElevenLabsVoiceClient(
-                settings.elevenlabs_api_key,
+                elevenlabs_api_keys,
                 settings.elevenlabs_voice_id,
                 settings.elevenlabs_model,
             )
-            if settings.elevenlabs_api_key
+            if elevenlabs_api_keys
             else None
         )
         return cls(

@@ -33,13 +33,19 @@ Kavasam is Android-first. It uses Android APIs that a normal user-installable ap
 
 ## Credentials needed for the sponsor-enabled jury build
 
-Put these in `backend/.env`, never in Flutter or Git:
+Put these in `backend/.env`, never in Flutter. For this private team demo repository only, the file is intentionally versioned so authorised teammates receive the same configuration:
 
 ```dotenv
-GEMINI_API_KEY=
+GEMINI_API_KEY_1=
+GEMINI_API_KEY_2=
+GEMINI_API_KEY_3=
+GEMINI_API_KEY_4=
 GEMINI_MODEL=gemini-3.7-flash
 
-ELEVENLABS_API_KEY=
+ELEVENLABS_API_KEY_1=
+ELEVENLABS_API_KEY_2=
+ELEVENLABS_API_KEY_3=
+ELEVENLABS_API_KEY_4=
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 ELEVENLABS_MODEL=eleven_multilingual_v2
 
@@ -47,16 +53,15 @@ N8N_GUARDIAN_WEBHOOK_URL=
 N8N_SIGNING_SECRET=
 ```
 
-The next infrastructure step will add the hosted database and Render deployment variables after the working Android flow is verified on the demo phone.
+The backend now includes a root-level Render Blueprint. Persistent hosted storage remains a later production step; the hackathon service intentionally uses in-memory demo state.
 
 ## Exact physical-device development run
 
 Terminal 1:
 
 ```powershell
-cd C:\WorkSpace\Private\kavasam\backend
+cd backend
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -64,9 +69,9 @@ Terminal 2:
 
 ```powershell
 adb reverse tcp:8000 tcp:8000
-cd C:\WorkSpace\Private\kavasam\mobile
+cd mobile
 flutter pub get
-flutter run -d YDBE7LZLGYXSZLKJ --dart-define=KAVASAM_API_URL=http://127.0.0.1:8000
+flutter run --dart-define=KAVASAM_API_URL=http://127.0.0.1:8000
 ```
 
 For an emulator, omit `adb reverse` and replace the URL with `http://10.0.2.2:8000`.
