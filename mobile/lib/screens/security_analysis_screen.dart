@@ -152,6 +152,7 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
           children: [
             TextField(
               controller: _message,
+              onChanged: (_) => setState(() {}),
               minLines: 3,
               maxLines: 7,
               maxLength: 20000,
@@ -197,6 +198,7 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
           children: [
             TextField(
               controller: _link,
+              onChanged: (_) => setState(() {}),
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
                 hintText: 'https://example.com/path',
