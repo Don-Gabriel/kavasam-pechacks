@@ -1,0 +1,137 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kavasam_mobile/models/phone.dart';
+
+void main() {
+  test('parses an explainable spam identity', () {
+    final identity = CallerIdentity.fromMap({
+      'number': '+919999999999',
+      'displayName': 'Suspected caller',
+      'category': 'Spam',
+      'riskScore': 78,
+      'riskLabel': 'Likely spam',
+      'isContact': false,
+      'isTrusted': false,
+      'isBlocked': false,
+      'reports': 2,
+      'similarity': 0.84,
+      'reasons': ['Reported twice', 'Repeat-call burst'],
+    });
+
+    expect(identity.isSpam, isTrue);
+    expect(identity.riskScore, 78);
+    expect(identity.reasons, hasLength(2));
+  });
+
+  test('parses private analytics counters', () {
+    final analytics = SpamAnalytics.fromMap({
+      'screened': 12,
+      'spam': 3,
+      'blocked': 1,
+      'unknown': 7,
+      'localReports': 4,
+      'vectorMatches': 2,
+      'windowDays': 30,
+    });
+
+    expect(analytics.screened, 12);
+    expect(analytics.vectorMatches, 2);
+    expect(analytics.windowDays, 30);
+  });
+
+  test('parses a saved Android contact', () {
+    final contact = SavedContact.fromMap({
+      'contactId': 42,
+      'displayName': 'Test Contact',
+      'number': '+91 90000 00000',
+      'normalizedNumber': '+919000000000',
+      'typeLabel': 'Mobile',
+      'photoUri': '',
+      'starred': true,
+    });
+
+    expect(contact.displayName, 'Test Contact');
+    expect(contact.normalizedNumber, '+919000000000');
+    expect(contact.starred, isTrue);
+  });
+
+  test('parses a missed system call', () {
+    final call = CallHistoryEntry.fromMap({
+      'number': '5550100',
+      'displayName': 'Unknown caller',
+      'riskScore': 10,
+      'callType': 'missed',
+      'direction': 'incoming',
+      'startedAt': 1000,
+      'endedAt': 1000,
+      'source': 'system',
+      'isRead': false,
+    });
+
+    expect(call.callType, 'missed');
+    expect(call.source, 'system');
+    expect(call.isRead, isFalse);
+  });
+
+  test('parses an active consented safety session', () {
+    final call = PhoneCallSnapshot.fromMap({
+      'number': '5550100',
+      'displayName': 'Unknown caller',
+      'riskScore': 10,
+      'riskLabel': 'Unverified',
+      'direction': 'incoming',
+      'state': 'ringing',
+      'trackingEnabled': true,
+      'trackingRiskScore': 68,
+      'trackingRiskLabel': 'Suspicious',
+      'trackingSimilarity': 0.81,
+      'trackingSignals': ['otp_pin'],
+      'trackingReasons': ['Caller requested an OTP'],
+      'trackingStartedAt': 1000,
+      'audioCaptured': false,
+    });
+
+    expect(call.trackingEnabled, isTrue);
+    expect(call.trackingRiskScore, 68);
+    expect(call.trackingSignals, contains('otp_pin'));
+    expect(call.audioCaptured, isFalse);
+  });
+
+  test('parses a cloud safety assessment without caller PII', () {
+    final assessment = CloudSafetyAssessment.fromJson({
+      'risk': 84,
+      'level': 'high',
+      'reasons': ['OTP request with urgency'],
+      'recommendedActions': ['End the call and verify independently'],
+      'warningText': 'Never share an OTP.',
+      'source': 'gemini',
+    });
+
+    expect(assessment.risk, 84);
+    expect(assessment.source, 'gemini');
+    expect(assessment.recommendedActions, hasLength(1));
+  });
+
+  test('parses community reputation and protection rules', () {
+    final reputation = CommunityReputation.fromJson({
+      'found': true,
+      'category': 'Financial fraud',
+      'risk': 82,
+      'riskLabel': 'Likely scam',
+      'reportCount': 4,
+      'confidence': 0.84,
+      'reasons': ['4 independent reports'],
+      'source': 'community',
+    });
+    final rules = CallProtectionRules.fromMap({
+      'blockPrivate': true,
+      'blockUnknown': false,
+      'blockHighRisk': true,
+    });
+
+    expect(reputation.found, isTrue);
+    expect(reputation.risk, 82);
+    expect(rules.blockPrivate, isTrue);
+    expect(rules.blockUnknown, isFalse);
+    expect(rules.blockHighRisk, isTrue);
+  });
+}

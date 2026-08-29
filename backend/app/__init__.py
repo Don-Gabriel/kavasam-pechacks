@@ -1,1 +1,0 @@
-"""Kavasam backend package."""

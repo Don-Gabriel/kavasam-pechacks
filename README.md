@@ -1,173 +1,353 @@
 # Kavasam
 
-Kavasam is an Android-first, consent-first fraud protection companion. It checks suspicious messages, calls, screenshots, QR codes, and UPI payment requests, explains the warning signs, and helps a user alert a trusted guardian or prepare an incident report.
+Kavasam is an Android default-phone application that combines reliable offline calling with consent-controlled online caller reputation and AI-assisted scam safety. Normal SIM calls, contacts, recents, call controls, local caller ID, local spam scoring, and blocking continue to work when the gateway or internet is unavailable.
 
-## What is in this repository
+The project is designed around one rule: **cloud intelligence may improve safety, but it must never become a dependency for placing, receiving, answering, or rejecting a call.**
 
-- `mobile/` — Flutter Android application plus native Android protection services
-- `backend/` — FastAPI API, deterministic fraud rules, and sponsor integrations
-- `docs/` — product, API, AI/data, security, sponsor, and demo specifications
-- `render.yaml` — one-click Render Blueprint for the backend
+## Project status
 
-The current MVP includes Android sharing, notification shielding, caller metadata screening, visible microphone-based call protection, message analysis, QR and screenshot scanning, UPI checks, guardian alerts, report generation, Gemini analysis, ElevenLabs warnings, and Android TTS fallback.
+| Area | Status | Notes |
+|---|---|---|
+| Android default dialer | Working | Real carrier calls through Android Telecom |
+| Incoming-call screening | Working | Local decision path; no network dependency |
+| Contacts and recents | Working | Read from Android providers after permission |
+| Local caller reputation | Working | SQLite profiles, reports, trust, blocking, labels |
+| Local vector risk scoring | Working | Deterministic on-device behavior vectors |
+| Per-call safety tracking | Working | User starts and stops tracking explicitly |
+| Community caller ID | Working | Requires the optional gateway and separate consent |
+| Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
+| Render deployment | Ready | Dockerfile and Blueprint included |
+| Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture it |
+| Production signing | Required before release | Debug signing is used for development builds |
 
-## Prerequisites
+Current mobile version: **4.0.0**.
 
-Install these before cloning the project:
+## Features
 
-- Git
-- Python 3.11 or newer
-- Flutter SDK with Dart 3.12 or newer
-- Android Studio, Android SDK, and an Android emulator or physical Android phone
-- JDK 17 (Android Studio's bundled JDK is suitable)
+### Phone application
 
-Confirm the Android toolchain is ready:
+- Real incoming and outgoing SIM/carrier calls
+- Android default-dialer and call-screening role setup
+- Answer, reject, disconnect, mute, speaker, hold, and resume controls
+- In-call DTMF keypad for automated phone menus
+- Searchable Android contacts and system call history
+- Speed dial from starred contacts
+- Incoming, outgoing, missed, rejected, blocked, and voicemail call types
 
-```powershell
-flutter doctor
-flutter doctor --android-licenses
-adb devices
+### Offline caller ID and spam protection
+
+- Saved-contact caller names
+- Private caller names and notes stored locally
+- Mark trusted, report spam, block, and unblock actions
+- Categorized reports for financial fraud, impersonation, delivery scams, telemarketing, robocalls, harassment, and other spam
+- Explainable risk score based on reports, repeated-call bursts, unknown status, carrier verification, and block state
+- Compact on-device vector similarity against suspicious-call behavior
+- Optional automatic rejection of private, unknown, or locally high-risk callers
+- Automatic rules are off by default and can be changed under **Insights**
+
+### Consent-first call safety
+
+- **Track this call for safety** button, off at the beginning of every call
+- User-confirmed signals for OTP/PIN requests, urgent payments, remote access, impersonation, secrecy/urgency, and threats
+- Live local suspicion score and reasons
+- Optional Gemini second opinion using a redacted structured event
+- Advisory actions rather than irreversible AI decisions
+- No call audio, transcript, or covert Accessibility Service workaround
+
+### Community caller reputation
+
+- Separate consent from AI safety analysis
+- Online lookup for incoming or dialed phone numbers
+- Unique reporter deduplication using a persistent random installation UUID
+- Server-side HMAC conversion before storage
+- The database stores keyed tokens and report categories, not raw phone numbers or reporter UUIDs
+- Community risk, report count, confidence, and category fused with the local assessment in the UI
+
+## Architecture
+
+```mermaid
+flowchart LR
+    SIM[Android Telecom / SIM] --> Native[Kotlin phone layer]
+    Contacts[Contacts + Call Log providers] --> Native
+    Native --> LocalDB[(Local SQLite)]
+    Native --> Flutter[Flutter UI]
+    Flutter --> LocalRisk[Local rules + vectors]
+    Flutter -. explicit AI consent .-> Gateway[FastAPI consent gateway]
+    Flutter -. community consent .-> Gateway
+    Gateway --> Gemini[Gemini generateContent]
+    Gateway --> Reputation[(Tokenized reputation database)]
+    LocalRisk --> UI[Explainable warning]
+    Gemini --> UI
+    Reputation --> UI
 ```
 
-Resolve every blocking issue reported by `flutter doctor` before continuing.
+The native call-screening service never waits for the gateway. Android screening uses only contacts, locally stored reputation, carrier verification, and user-selected blocking rules. Online results are displayed as a second layer after the caller UI opens.
 
-## 1. Clone the repository
+## Data boundaries
 
-```powershell
-git clone https://github.com/Don-Gabriel/kavasam-pechacks.git
-cd kavasam-pechacks
-```
+| Capability | Sent to gateway | Stored by gateway |
+|---|---|---|
+| AI safety | Random session UUID, local risk, vector similarity, selected signal keys, three caller-context booleans, locale | No raw request retention |
+| Community lookup | Phone number over HTTPS | Server-HMAC number token only |
+| Community report | Phone number, random reporter UUID, category | HMAC number token, HMAC reporter token, category, timestamps |
+| Contacts | Nothing | Nothing |
+| Call history | Nothing | Nothing |
+| Call audio/transcript | Nothing | Nothing |
 
-This is a private hackathon repository. `backend/.env` is intentionally shared so authorised teammates receive the demo credentials when they clone. Do not make the repository public, paste the file into logs, or distribute it outside the team. Rotate all keys if repository access changes.
+AI safety and community caller ID have independent switches. Both default to off. API keys stay on the server and must never be compiled into the APK.
 
-## 2. Start the backend locally
-
-PowerShell:
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-macOS/Linux:
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Verify the backend:
-
-- Health: `http://localhost:8000/health`
-- Interactive API docs: `http://localhost:8000/docs`
-
-Keep this terminal running while using the app. The checked-in development configuration exposes a temporary demo OTP to the app. Real SMS authentication must replace this before a public production release.
-
-## 3. Run the Android app
-
-Open a second terminal:
-
-```powershell
-cd mobile
-flutter pub get
-flutter devices
-```
-
-For an Android emulator:
-
-```powershell
-flutter run --dart-define=KAVASAM_API_URL=http://10.0.2.2:8000
-```
-
-For a physical Android phone connected by USB:
-
-```powershell
-adb reverse tcp:8000 tcp:8000
-flutter run --dart-define=KAVASAM_API_URL=http://127.0.0.1:8000
-```
-
-If several devices are connected, add `-d DEVICE_ID` from `flutter devices` to the command.
-
-On first launch, grant the permissions needed for the feature being demonstrated. Open **Protection setup** inside Kavasam to enable notification access and select Kavasam as the call-screening app. Camera, microphone, notification, and Bluetooth permissions are requested only when required.
-
-## 4. Use the hosted Render backend
-
-The repository contains a Render Blueprint configured for this monorepo.
-
-1. Sign in to Render and connect the GitHub account that can access this private repository.
-2. Select **New → Blueprint**.
-3. Choose `Don-Gabriel/kavasam-pechacks` and the `main` branch.
-4. Render detects `render.yaml`; review the `kavasam-api` service and deploy it.
-5. Wait for `/health` to pass, then copy the service URL, for example `https://kavasam-api.onrender.com`.
-6. Verify `https://YOUR-SERVICE.onrender.com/health` and `/docs`.
-
-Run the mobile app against Render:
-
-```powershell
-cd mobile
-flutter run --dart-define=KAVASAM_API_URL=https://YOUR-SERVICE.onrender.com
-```
-
-Render redeploys the backend when `main` changes. The current repository stores demo state in memory, so users, guardian links, and incidents reset whenever the service restarts or redeploys. This is appropriate for the hackathon demo; persistent storage is a separate production step.
-
-## 5. Build a shareable Android APK
-
-Use the Render URL so the APK works without a teammate's laptop running the backend:
-
-```powershell
-cd mobile
-flutter build apk --release --dart-define=KAVASAM_API_URL=https://YOUR-SERVICE.onrender.com
-```
-
-The APK is generated at:
+## Repository layout
 
 ```text
-mobile/build/app/outputs/flutter-apk/app-release.apk
+kavasam/
+├── mobile/                     Flutter UI and native Android Telecom code
+│   ├── lib/                    Dart models, services, and screens
+│   ├── android/app/src/main/   Kotlin dialer, screening, storage, and tracking
+│   └── test/                   Flutter model and widget tests
+├── cloud/                      FastAPI consent gateway
+│   ├── app/                    API schemas, Gemini analyzer, reputation store
+│   ├── tests/                  Privacy, API, and reputation tests
+│   └── Dockerfile              Production container
+├── docs/                       Sponsor architecture and implementation notes
+├── scripts/start-hybrid.ps1    One-command local gateway/build/install flow
+└── render.yaml                 Render Blueprint
 ```
 
-Install it on a connected device with:
+## Requirements
+
+- Flutter SDK compatible with Dart `^3.12.1`
+- Android SDK with platform tools
+- Java 17
+- Python 3.11 or newer
+- A physical Android phone with telephony and an active SIM
+- USB debugging for local installation
+- Optional Gemini API key for real Gemini responses
+
+Browser, desktop, and iOS builds cannot become Android's system phone application.
+
+## Quick start: offline caller
+
+The default build does not contain a gateway URL. All caller functionality remains available, while both online switches report that the gateway is not configured.
 
 ```powershell
-adb install -r build/app/outputs/flutter-apk/app-release.apk
+cd C:\WorkSpace\Private\kavasam\mobile
+
+$env:TEMP='C:\WorkSpace\Private\kavasam\.jtmp'
+$env:TMP='C:\WorkSpace\Private\kavasam\.jtmp'
+
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --debug
+
+& 'C:\Android\Sdk\platform-tools\adb.exe' install -r `
+  build\app\outputs\flutter-apk\app-debug.apk
 ```
 
-## API-key fallback
+The APK is generated at `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
 
-Gemini and ElevenLabs each have four ordered key slots in `backend/.env`. Key 1 is used first. If a provider rejects, rate-limits, or exhausts that key, the backend tries the next configured key and keeps the successful key active. API keys never enter the Flutter application or APK.
+## Quick start: local hybrid mode
 
-## Verification
-
-Backend:
+The helper script starts the local gateway, creates an ADB reverse tunnel, compiles the gateway URL into the debug APK, installs it, restores the Android roles, and launches Kavasam.
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python -m ruff check app tests
-python -m pytest
+cd C:\WorkSpace\Private\kavasam
+
+python -m venv cloud\.venv
+.\cloud\.venv\Scripts\python.exe -m pip install -r cloud\requirements.txt
+
+.\scripts\start-hybrid.ps1
 ```
 
-Mobile:
+Then open **Insights** and enable either or both:
+
+1. **Optional cloud AI** — redacted structured scam-safety analysis.
+2. **Community caller ID** — phone-number lookup and categorized community reports.
+
+Local hybrid mode requires the USB connection and `adb reverse tcp:8080 tcp:8080` to remain active. Community reputation works without Gemini. Without `GEMINI_API_KEY`, the safety endpoint returns the tested `rules-fallback` response and labels its source honestly.
+
+## Run the gateway manually
+
+```powershell
+cd C:\WorkSpace\Private\kavasam\cloud
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# Optional. Set this only in the gateway process or deployment secrets.
+$env:GEMINI_API_KEY='your-private-server-key'
+$env:GEMINI_MODEL='gemini-3.7-flash'
+$env:NUMBER_HMAC_SECRET='a-long-random-production-secret'
+$env:KAVASAM_DB_PATH='data/kavasam.db'
+
+.\.venv\Scripts\python.exe -m uvicorn app.main:app `
+  --host 127.0.0.1 --port 8080
+```
+
+Health and API documentation:
+
+- `GET http://127.0.0.1:8080/health`
+- `GET http://127.0.0.1:8080/docs`
+
+## Gateway API
+
+### Safety analysis
+
+`POST /v1/safety/analyze`
+
+```json
+{
+  "schemaVersion": 1,
+  "sessionId": "b50a24e1-992f-4a87-b3d5-1ff36d8b0f74",
+  "localRisk": 68,
+  "vectorSimilarity": 0.81,
+  "signals": ["otp_pin", "secrecy_urgency"],
+  "callerContext": {
+    "savedContact": false,
+    "locallyReported": true,
+    "carrierVerificationFailed": false
+  },
+  "locale": "en-IN"
+}
+```
+
+The schema rejects extra fields. Phone numbers, names, audio, transcripts, and call history receive HTTP 422 if included.
+
+### Reputation lookup
+
+`POST /v1/reputation/lookup`
+
+```json
+{
+  "phoneNumber": "+919000000001"
+}
+```
+
+### Reputation report
+
+`POST /v1/reputation/report`
+
+```json
+{
+  "phoneNumber": "+919000000001",
+  "reporterId": "b50a24e1-992f-4a87-b3d5-1ff36d8b0f74",
+  "category": "financial_fraud"
+}
+```
+
+One reporter contributes at most one active category per number. A repeated report updates the category rather than inflating the count.
+
+## Production deployment on Render
+
+1. Connect the repository to Render.
+2. Create services from `render.yaml`.
+3. Add `GEMINI_API_KEY` as a secret.
+4. Keep the generated `NUMBER_HMAC_SECRET` stable. Rotating it makes existing number tokens unsearchable.
+5. Confirm the persistent disk is mounted at `/var/data`.
+6. Verify `https://your-service/health`.
+7. Build the app with the HTTPS endpoint:
+
+```powershell
+cd mobile
+flutter build apk --release `
+  --dart-define=KAVASAM_AI_BASE_URL=https://your-service.example
+```
+
+Replace debug signing in `mobile/android/app/build.gradle.kts` with a protected release keystore before distribution.
+
+## First-launch setup
+
+1. Tap **Make Kavasam my phone app** and approve the Android dialer role.
+2. Tap **Enable caller ID** and approve the call-screening role.
+3. Grant Contacts access for saved caller names.
+4. Grant Call Log access for system recents.
+5. Review automatic blocking rules under **Insights**; all remain off until enabled.
+6. Enable cloud features only after reviewing their separate data disclosures.
+
+## Testing
+
+### Mobile
 
 ```powershell
 cd mobile
 flutter analyze
 flutter test
+flutter build apk --debug
 ```
 
-## Common problems
+The current suite covers models, safety sessions, community reputation parsing, protection rules, and primary dialer rendering.
 
-- **The app cannot reach the backend:** confirm `/health` works, use `10.0.2.2` for an emulator, or run `adb reverse` for a USB phone.
-- **No device is available:** start an Android emulator or enable USB debugging and accept the phone's RSA prompt.
-- **Android build tools are missing:** run `flutter doctor`, install the requested SDK component in Android Studio, then accept the Android licences.
-- **Render deploy fails:** confirm the service root is `backend`, the build command is `pip install .`, and the start command binds to `$PORT`.
-- **A cloud provider is unavailable:** Kavasam continues with deterministic fraud rules and Android TTS; check `/health` to see which integrations loaded.
+### Gateway
 
-See [Android build and sponsor status](docs/ANDROID_BUILD_AND_SPONSOR_STATUS.md) for the feature/credential matrix and jury demo sequence.
+```powershell
+cd cloud
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+The gateway suite verifies:
+
+- AI schema rejection of phone numbers, names, audio, transcripts, and call history
+- Unknown-signal rejection
+- Explainable and bounded fallback decisions
+- HTTP no-store headers
+- Community report deduplication
+- Absence of raw numbers and reporter UUIDs from the SQLite dump
+- Confidence growth across independent reporters
+- Neutral results for unknown numbers
+
+## Security notes
+
+- Android backups are disabled for the application.
+- The APK requests `INTERNET` only for optional online features and does not request `RECORD_AUDIO`.
+- Cloud endpoints must use HTTPS outside localhost development.
+- The gateway sets `Cache-Control: no-store`, `Pragma: no-cache`, and `X-Content-Type-Options: nosniff`.
+- Gemini output is schema-validated and advisory.
+- AI never automatically blocks a caller, submits a report, contacts a guardian, or performs a financial action.
+- Automatic screening decisions use deterministic local data only.
+- Production deployments must add authentication/rate limiting before accepting reports from the public internet.
+
+## Known limitations
+
+- The community database starts empty and becomes useful as independent reports accumulate.
+- SQLite is appropriate for the hackathon/demo gateway. MongoDB Atlas Vector Search or another managed store is the intended scale-out path.
+- The current build does not upload contact directories or provide a crowd-sourced personal-name directory.
+- Live Gemini responses require a valid server-side key and supported model.
+- Cellular call audio is not recorded or transcribed.
+- Local hybrid mode stops working when the computer gateway, USB connection, or ADB reverse tunnel stops.
+- Production Play Store distribution requires release signing, policy review, privacy disclosures, and default-handler permission compliance.
+
+## Troubleshooting
+
+### “Gateway not configured”
+
+The APK was built without `KAVASAM_AI_BASE_URL`. Rebuild with an HTTPS production URL or run `scripts/start-hybrid.ps1` for the local demo.
+
+### “Cloud unavailable”
+
+Check gateway health and, in local mode, restore the tunnel:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+adb reverse tcp:8080 tcp:8080
+adb reverse --list
+```
+
+Local caller ID and call controls remain active during this error.
+
+### Kavasam is not the phone app
+
+Use the in-app role button or development command:
+
+```powershell
+adb shell cmd role add-role-holder `
+  android.app.role.DIALER app.kavasam.kavasam_mobile
+```
+
+### Contacts or recents are empty
+
+Grant Contacts and Call Log access from the app or Android App Info. Kavasam does not fabricate data when permission is unavailable.
+
+## Sponsor architecture
+
+The implemented Gemini and community-reputation paths, plus credential-dependent plans for ElevenLabs, MongoDB Atlas, Snowflake, n8n, Render/Vultr, and Trace Commons, are documented in [docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md](docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md).
+
+Sponsor integrations are claimed only when they are visible in the product and backed by a test or reproducible audit record.

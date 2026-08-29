@@ -1,9 +1,20 @@
 services:
   - type: web
-    name: kavasam-api
-    runtime: python
-    plan: free
-    rootDir: backend
-    buildCommand: pip install .
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    name: kavasam-consent-gateway
+    runtime: docker
+    dockerfilePath: ./cloud/Dockerfile
+    dockerContext: ./cloud
     healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.7-flash
+      - key: NUMBER_HMAC_SECRET
+        generateValue: true
+      - key: KAVASAM_DB_PATH
+        value: /var/data/kavasam.db
+    disk:
+      name: kavasam-data
+      mountPath: /var/data
+      sizeGB: 1

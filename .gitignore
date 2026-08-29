@@ -1,36 +1,30 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.venv/
-htmlcov/
-.coverage
-
-# Trace Commons local submission artifacts
-ids.json
-attestation.jws
-
-# Local JVM socket workaround for sandboxed Android builds
-.jtmp/
-.artifacts/
-
-# Ruflo/Codex local coordination state
-.claude/
-.claude-flow/
-.swarm/
-ruvector.db
-
-# Editors and operating systems
-.idea/
-.vscode/
-.DS_Store
-Thumbs.db
-
-# Flutter/Dart generated state
+# Flutter/Dart generated files
 mobile/.dart_tool/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/build/
 mobile/coverage/
+
+# Android/IDE generated files
+.gradle/
+.idea/
+.vscode/
+*.iml
+
+# Local build/runtime coordination
+backend/
+cloud/.venv/
+cloud/.pytest_cache/
+cloud/**/__pycache__/
+cloud/data/
+.artifacts/
+.jtmp/
+.claude/
+.claude-flow/
+.swarm/
+agentdb.rvf*
+ruvector.db
+
+# Operating systems
+.DS_Store
+Thumbs.db
