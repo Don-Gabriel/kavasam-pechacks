@@ -12,6 +12,10 @@ htmlcov/
 .env.*
 !.env.example
 
+# Trace Commons local submission artifacts
+ids.json
+attestation.jws
+
 # Ruflo/Codex local coordination state
 .claude-flow/
 .swarm/
@@ -28,4 +32,3 @@ mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/build/
 mobile/coverage/
-
