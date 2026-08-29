@@ -1,9 +1,11 @@
 package app.kavasam.kavasam_mobile
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.telecom.Call
-import android.telecom.CallAudioState
 import android.telecom.VideoProfile
+import io.flutter.plugin.common.EventChannel
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -18,6 +20,18 @@ object PhoneCallController {
     private var direction = "outgoing"
     private var startedAt = 0L
     private var identity: CallerIdentity? = null
+    private var eventSink: EventChannel.EventSink? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val callCallback = object : Call.Callback() {
+        override fun onStateChanged(call: Call, state: Int) = emitSnapshot()
+        override fun onDetailsChanged(call: Call, details: Call.Details) = emitSnapshot()
+    }
+
+    @Synchronized
+    fun setEventSink(value: EventChannel.EventSink?) {
+        eventSink = value
+        emitSnapshot()
+    }
 
     @Synchronized
     fun attach(value: KavasamInCallService) {
@@ -31,12 +45,15 @@ object PhoneCallController {
 
     @Synchronized
     fun onCallAdded(context: Context, value: Call) {
+        call?.unregisterCallback(callCallback)
         call = value
+        value.registerCallback(callCallback, mainHandler)
         number = value.details.handle?.schemeSpecificPart ?: "Unknown number"
         direction = if (value.state == Call.STATE_RINGING) "incoming" else "outgoing"
         startedAt = System.currentTimeMillis()
         identity = CallerIdentityStore.assess(context, number, direction)
         CallSafetyTracker.onCallStarted(context, number)
+        emitSnapshot()
     }
 
     @Synchronized
@@ -52,14 +69,18 @@ object PhoneCallController {
             isContact = latestIdentity?.isContact ?: false,
         )
         CallSafetyTracker.finishCall(context)
+        value.unregisterCallback(callCallback)
         call = null
         identity = null
+        emitSnapshot()
     }
+
+    fun onAudioStateChanged() = emitSnapshot()
 
     @Synchronized
     fun snapshot(): Map<String, Any?>? {
         val active = call ?: return null
-        val audio = service?.callAudioState
+        val inCallService = service
         val caller = identity
         return mapOf(
             "number" to (active.details.handle?.schemeSpecificPart ?: number),
@@ -72,8 +93,8 @@ object PhoneCallController {
             "reasons" to (caller?.reasons ?: emptyList<String>()),
             "direction" to direction,
             "state" to stateName(active.state),
-            "muted" to (audio?.isMuted ?: false),
-            "speakerOn" to ((audio?.route ?: 0) and CallAudioState.ROUTE_SPEAKER != 0),
+            "muted" to (inCallService?.isMutedNow() ?: false),
+            "speakerOn" to (inCallService?.isSpeakerOnNow() ?: false),
             "canHold" to (
                 active.details.callCapabilities and Call.Details.CAPABILITY_HOLD != 0
             ),
@@ -83,24 +104,28 @@ object PhoneCallController {
     @Synchronized
     fun answer(): Boolean = call?.let {
         it.answer(VideoProfile.STATE_AUDIO_ONLY)
+        emitSnapshot()
         true
     } ?: false
 
     @Synchronized
     fun reject(): Boolean = call?.let {
         it.reject(false, null)
+        emitSnapshot()
         true
     } ?: false
 
     @Synchronized
     fun disconnect(): Boolean = call?.let {
         it.disconnect()
+        emitSnapshot()
         true
     } ?: false
 
     @Synchronized
     fun setHeld(value: Boolean): Boolean = call?.let {
         if (value) it.hold() else it.unhold()
+        emitSnapshot()
         true
     } ?: false
 
@@ -110,7 +135,7 @@ object PhoneCallController {
         if (tone !in "0123456789*#") return false
         return call?.let {
             it.playDtmfTone(tone)
-            it.stopDtmfTone()
+            mainHandler.postDelayed({ it.stopDtmfTone() }, DTMF_TONE_MILLIS)
             true
         } ?: false
     }
@@ -129,17 +154,17 @@ object PhoneCallController {
     }
 
     @Synchronized
-    fun setMuted(value: Boolean): Boolean = service?.let {
-        it.setMuted(value)
-        true
-    } ?: false
+    fun setMuted(value: Boolean): Boolean = service?.setMutedSafely(value) ?: false
 
     @Suppress("DEPRECATION")
     @Synchronized
-    fun setSpeaker(value: Boolean): Boolean = service?.let {
-        it.setAudioRoute(if (value) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE)
-        true
-    } ?: false
+    fun setSpeaker(value: Boolean): Boolean = service?.setSpeakerSafely(value) ?: false
+
+    private fun emitSnapshot() {
+        val value = snapshot()
+        val send = { eventSink?.success(value) }
+        if (Looper.myLooper() == Looper.getMainLooper()) send() else mainHandler.post { send() }
+    }
 
     fun history(context: Context): List<Map<String, Any>> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -198,4 +223,6 @@ object PhoneCallController {
         Call.STATE_DISCONNECTED -> "disconnected"
         else -> "unknown"
     }
+
+    private const val DTMF_TONE_MILLIS = 140L
 }

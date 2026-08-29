@@ -13,7 +13,9 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Contacts and recents | Working | Read from Android providers after permission |
 | Local caller reputation | Working | SQLite profiles, reports, trust, blocking, labels |
 | Local vector risk scoring | Working | Deterministic on-device behavior vectors |
+| Actian VectorAI DB | Integrated | Real online scam-pattern collection, upsert, and nearest-neighbor search |
 | Per-call safety tracking | Working | User starts and stops tracking explicitly |
+| Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
 | Render deployment | Ready | Dockerfile and Blueprint included |
@@ -54,6 +56,15 @@ Current mobile version: **4.0.0**.
 - Advisory actions rather than irreversible AI decisions
 - No call audio, transcript, or covert Accessibility Service workaround
 
+### Guardian approval for suspicious calls
+
+- Guardian enrollment requires an explicit `JOIN #code` SMS reply before use
+- User-triggered approval pauses and mutes the call while n8n delivers the SMS
+- `ACCEPT #code` resumes; `REJECT #code`, no reply within five minutes, or delivery failure ends the call
+- Multiple pending requests require the four-digit reference code
+- Only the local risk summary, selected signal keys, and caller's last four digits are sent
+- The gateway stores a keyed guardian-number token and approval audit state, never the raw number
+
 ### Community caller reputation
 
 - Separate consent from AI safety analysis
@@ -74,8 +85,12 @@ flowchart LR
     Flutter --> LocalRisk[Local rules + vectors]
     Flutter -. explicit AI consent .-> Gateway[FastAPI consent gateway]
     Flutter -. community consent .-> Gateway
+    Flutter -. explicit guardian request .-> Gateway
     Gateway --> Gemini[Gemini generateContent]
+    Gateway --> Actian[(Actian VectorAI DB)]
     Gateway --> Reputation[(Tokenized reputation database)]
+    Gateway --> N8N[n8n SMS workflow]
+    N8N --> Guardian[Verified guardian]
     LocalRisk --> UI[Explainable warning]
     Gemini --> UI
     Reputation --> UI
@@ -88,8 +103,11 @@ The native call-screening service never waits for the gateway. Android screening
 | Capability | Sent to gateway | Stored by gateway |
 |---|---|---|
 | AI safety | Random session UUID, local risk, vector similarity, selected signal keys, three caller-context booleans, locale | No raw request retention |
+| Actian vectors | The same redacted safety fields encoded as a 12-value behavior vector | Versioned scam prototypes and no caller PII |
 | Community lookup | Phone number over HTTPS | Server-HMAC number token only |
 | Community report | Phone number, random reporter UUID, category | HMAC number token, HMAC reporter token, category, timestamps |
+| Guardian enrollment | Guardian number, primary user's chosen alias | HMAC guardian-number token, random device/enrollment IDs, state and timestamps |
+| Guardian approval | Guardian number, alias, risk summary, selected signals, caller's last four digits | HMAC number token, random request IDs, decision state and timestamps |
 | Contacts | Nothing | Nothing |
 | Call history | Nothing | Nothing |
 | Call audio/transcript | Nothing | Nothing |
@@ -122,6 +140,7 @@ kavasam/
 - A physical Android phone with telephony and an active SIM
 - USB debugging for local installation
 - Optional Gemini API key for real Gemini responses
+- Docker Desktop or an external Actian VectorAI DB instance for online vector retrieval
 
 Browser, desktop, and iOS builds cannot become Android's system phone application.
 
@@ -166,6 +185,18 @@ Then open **Insights** and enable either or both:
 
 Local hybrid mode requires the USB connection and `adb reverse tcp:8080 tcp:8080` to remain active. Community reputation works without Gemini. Without `GEMINI_API_KEY`, the safety endpoint returns the tested `rules-fallback` response and labels its source honestly.
 
+### Start Actian VectorAI DB and the gateway
+
+Review Actian's EULA, set `ACTIAN_VECTORAI_ACCEPT_EULA=YES` in the ignored `cloud/.env`, then run:
+
+```powershell
+cd C:\WorkSpace\Private\kavasam
+docker compose up -d vectorai gateway
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+The first consented safety request creates `kavasam_scam_patterns`, upserts the built-in prototypes, and performs a real Actian nearest-neighbor search. Full setup and production configuration are in [docs/ACTIAN_VECTORAI_SETUP.md](docs/ACTIAN_VECTORAI_SETUP.md).
+
 ## Run the gateway manually
 
 ```powershell
@@ -178,6 +209,13 @@ $env:GEMINI_API_KEY='your-private-server-key'
 $env:GEMINI_MODEL='gemini-3.7-flash'
 $env:NUMBER_HMAC_SECRET='a-long-random-production-secret'
 $env:KAVASAM_DB_PATH='data/kavasam.db'
+$env:ACTIAN_VECTORAI_URL='http://127.0.0.1:6573'
+$env:ACTIAN_VECTORAI_COLLECTION='kavasam_scam_patterns'
+
+# Required only for live guardian SMS approval.
+$env:N8N_WEBHOOK_URL='https://your-n8n.example/webhook/kavasam-guardian'
+$env:N8N_WEBHOOK_SECRET='a-separate-long-random-secret'
+$env:PUBLIC_BASE_URL='https://your-gateway.example'
 
 .\.venv\Scripts\python.exe -m uvicorn app.main:app `
   --host 127.0.0.1 --port 8080
@@ -187,6 +225,10 @@ Health and API documentation:
 
 - `GET http://127.0.0.1:8080/health`
 - `GET http://127.0.0.1:8080/docs`
+
+Guardian SMS remains unavailable until all three n8n variables above are present. The n8n workflow must send the supplied `message` to `to`, then forward inbound SMS replies to `replyWebhookUrl` with the same `X-Kavasam-Webhook-Secret` header. For India production traffic, complete the provider's TRAI DLT sender/template registration.
+
+The exact workflow contract and production checklist are in [docs/N8N_GUARDIAN_SMS_SETUP.md](docs/N8N_GUARDIAN_SMS_SETUP.md).
 
 ## Gateway API
 
@@ -293,6 +335,9 @@ The gateway suite verifies:
 - Absence of raw numbers and reporter UUIDs from the SQLite dump
 - Confidence growth across independent reporters
 - Neutral results for unknown numbers
+- Guardian number tokenization and explicit SMS opt-in
+- Approval reply parsing, reference matching, and non-approval of malformed replies
+- Actian collection creation, pattern upsert, vector search, authentication, attribution, and fail-open behavior
 
 ## Security notes
 
@@ -301,16 +346,17 @@ The gateway suite verifies:
 - Cloud endpoints must use HTTPS outside localhost development.
 - The gateway sets `Cache-Control: no-store`, `Pragma: no-cache`, and `X-Content-Type-Options: nosniff`.
 - Gemini output is schema-validated and advisory.
-- AI never automatically blocks a caller, submits a report, contacts a guardian, or performs a financial action.
+- AI never contacts a guardian by itself. Only the user's visible **Ask guardian to continue** action starts the fail-closed SMS flow.
 - Automatic screening decisions use deterministic local data only.
 - Production deployments must add authentication/rate limiting before accepting reports from the public internet.
 
 ## Known limitations
 
 - The community database starts empty and becomes useful as independent reports accumulate.
-- SQLite is appropriate for the hackathon/demo gateway. MongoDB Atlas Vector Search or another managed store is the intended scale-out path.
+- SQLite remains the small community-report store. Actian VectorAI DB is the implemented vector engine; a live instance is required to show `actian-vectorai` instead of the explicit fallback state.
 - The current build does not upload contact directories or provide a crowd-sourced personal-name directory.
 - Live Gemini responses require a valid server-side key and supported model.
+- Live guardian approval requires a two-way SMS provider connected through n8n; local calling remains independent of it.
 - Cellular call audio is not recorded or transcribed.
 - Local hybrid mode stops working when the computer gateway, USB connection, or ADB reverse tunnel stops.
 - Production Play Store distribution requires release signing, policy review, privacy disclosures, and default-handler permission compliance.
@@ -348,6 +394,6 @@ Grant Contacts and Call Log access from the app or Android App Info. Kavasam doe
 
 ## Sponsor architecture
 
-The implemented Gemini and community-reputation paths, plus credential-dependent plans for ElevenLabs, MongoDB Atlas, Snowflake, n8n, Render/Vultr, and Trace Commons, are documented in [docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md](docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md).
+The implemented Gemini, Actian VectorAI DB, community-reputation, and guardian gateway paths, plus credential-dependent plans for ElevenLabs, Snowflake, Render/Vultr, and Trace Commons, are documented in [docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md](docs/PEC_HACKS_SPONSOR_ARCHITECTURE.md).
 
 Sponsor integrations are claimed only when they are visible in the product and backed by a test or reproducible audit record.

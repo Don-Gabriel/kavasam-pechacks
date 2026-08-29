@@ -13,10 +13,14 @@ mobile/coverage/
 
 # Local build/runtime coordination
 backend/
+**/.env
+**/.env.local
 cloud/.venv/
 cloud/.pytest_cache/
 cloud/**/__pycache__/
 cloud/data/
+data/
+actian_data/
 .artifacts/
 .jtmp/
 .claude/

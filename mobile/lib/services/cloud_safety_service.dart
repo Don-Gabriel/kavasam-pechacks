@@ -69,10 +69,96 @@ class CloudSafetyService {
     return CloudSafetyAssessment.fromJson(value);
   }
 
+  Future<GuardianEnrollment> enrollGuardian({
+    required String deviceId,
+    required String guardianPhone,
+    required String primaryAlias,
+    String locale = 'en-IN',
+  }) async {
+    final value = await _postJson('/v1/guardian/enrollments', {
+      'deviceId': deviceId,
+      'guardianPhone': _networkNumber(guardianPhone),
+      'primaryAlias': primaryAlias.trim(),
+      'locale': locale,
+    });
+    return GuardianEnrollment.fromJson(value);
+  }
+
+  Future<GuardianEnrollment> getGuardianEnrollment({
+    required String enrollmentId,
+    required String deviceId,
+  }) async {
+    final value = await _getJson('/v1/guardian/enrollments/$enrollmentId', {
+      'deviceId': deviceId,
+    });
+    return GuardianEnrollment.fromJson(value);
+  }
+
+  Future<GuardianApproval> requestGuardianApproval({
+    required String deviceId,
+    required GuardianConfig guardian,
+    required String callSessionId,
+    required PhoneCallSnapshot call,
+  }) async {
+    final digits = call.number.replaceAll(RegExp(r'[^0-9]'), '');
+    final value = await _postJson('/v1/guardian/approvals', {
+      'deviceId': deviceId,
+      'guardianId': guardian.guardianId,
+      'guardianPhone': _networkNumber(guardian.guardianPhone),
+      'callSessionId': callSessionId,
+      'primaryAlias': guardian.primaryAlias,
+      'callerLast4': digits.length <= 4
+          ? digits
+          : digits.substring(digits.length - 4),
+      'risk': call.trackingRiskScore,
+      'riskLabel': call.trackingRiskLabel,
+      'signals': call.trackingSignals,
+    });
+    return GuardianApproval.fromJson(value);
+  }
+
+  Future<GuardianApproval> getGuardianApproval({
+    required String requestId,
+    required String deviceId,
+  }) async {
+    final value = await _getJson('/v1/guardian/approvals/$requestId', {
+      'deviceId': deviceId,
+    });
+    return GuardianApproval.fromJson(value);
+  }
+
+  Future<Map<String, Object?>> _getJson(
+    String path,
+    Map<String, String> query,
+  ) async {
+    final base = _validatedBase();
+    final uri = base.resolve(path).replace(queryParameters: query);
+    final request = await _client
+        .getUrl(uri)
+        .timeout(const Duration(seconds: 8));
+    request.headers.set('accept', 'application/json');
+    return _readJson(
+      await request.close().timeout(const Duration(seconds: 15)),
+    );
+  }
+
   Future<Map<String, Object?>> _postJson(
     String path,
     Map<String, Object?> payload,
   ) async {
+    final base = _validatedBase();
+    final request = await _client
+        .postUrl(base.resolve(path))
+        .timeout(const Duration(seconds: 8));
+    request.headers.contentType = ContentType.json;
+    request.headers.set('accept', 'application/json');
+    request.write(jsonEncode(payload));
+    return _readJson(
+      await request.close().timeout(const Duration(seconds: 15)),
+    );
+  }
+
+  Uri _validatedBase() {
     if (!isConfigured) {
       throw const CloudSafetyException('Cloud gateway is not configured.');
     }
@@ -86,19 +172,18 @@ class CloudSafetyService {
         'The cloud gateway must use HTTPS (localhost is allowed for development).',
       );
     }
-    final request = await _client
-        .postUrl(base.resolve(path))
-        .timeout(const Duration(seconds: 8));
-    request.headers.contentType = ContentType.json;
-    request.headers.set('accept', 'application/json');
-    request.write(jsonEncode(payload));
-    final response = await request.close().timeout(const Duration(seconds: 15));
+    return base;
+  }
+
+  Future<Map<String, Object?>> _readJson(HttpClientResponse response) async {
     final body = await utf8.decoder.bind(response).join();
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final decodedError = _tryDecodeJson(body);
+      final detail = decodedError?['detail']?.toString();
       throw CloudSafetyException(
         response.statusCode == 429
             ? 'Cloud analysis is busy. Local protection is still active.'
-            : 'Cloud analysis failed (${response.statusCode}). Local protection is still active.',
+            : detail ?? 'Gateway request failed (${response.statusCode}).',
       );
     }
     final decoded = jsonDecode(body);
@@ -106,6 +191,15 @@ class CloudSafetyService {
       throw const CloudSafetyException('Cloud gateway returned invalid data.');
     }
     return Map<String, Object?>.from(decoded);
+  }
+
+  Map<String, Object?>? _tryDecodeJson(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map ? Map<String, Object?>.from(decoded) : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   String _networkNumber(String value) {

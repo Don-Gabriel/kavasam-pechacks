@@ -1,0 +1,27 @@
+services:
+  vectorai:
+    image: actian/vectorai:latest
+    container_name: kavasam-vectorai
+    env_file:
+      - ./cloud/.env
+    ports:
+      - "6573:6573"
+      - "6574:6574"
+      - "6575:6575"
+    volumes:
+      - ./actian_data:/var/lib/actian-vectorai
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./cloud
+    container_name: kavasam-gateway
+    env_file:
+      - ./cloud/.env
+    environment:
+      ACTIAN_VECTORAI_URL: http://vectorai:6573
+    ports:
+      - "8080:8080"
+    depends_on:
+      - vectorai
+    restart: unless-stopped

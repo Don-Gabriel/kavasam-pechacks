@@ -1,6 +1,8 @@
 package app.kavasam.kavasam_mobile
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,6 +14,7 @@ import android.telecom.TelecomManager
 import android.telephony.PhoneNumberUtils
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.UUID
 
@@ -80,6 +83,20 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CALL_EVENTS_CHANNEL,
+        ).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    PhoneCallController.setEventSink(events)
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    PhoneCallController.setEventSink(null)
+                }
+            },
+        )
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_NAME,
@@ -144,6 +161,26 @@ class MainActivity : FlutterActivity() {
                         .putBoolean(COMMUNITY_CONSENT_KEY, enabled)
                         .apply()
                     result.success(enabled)
+                }
+                "getGuardianConfig" -> result.success(guardianConfig())
+                "saveGuardianConfig" -> {
+                    val preferences = getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE)
+                    preferences.edit()
+                        .putString(GUARDIAN_PRIMARY_ALIAS_KEY, call.argument<String>("primaryAlias").orEmpty())
+                        .putString(GUARDIAN_PHONE_KEY, call.argument<String>("guardianPhone").orEmpty())
+                        .putString(GUARDIAN_ID_KEY, call.argument<String>("guardianId").orEmpty())
+                        .putString(GUARDIAN_STATUS_KEY, call.argument<String>("status").orEmpty())
+                        .apply()
+                    result.success(guardianConfig())
+                }
+                "clearGuardianConfig" -> {
+                    getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE).edit()
+                        .remove(GUARDIAN_PRIMARY_ALIAS_KEY)
+                        .remove(GUARDIAN_PHONE_KEY)
+                        .remove(GUARDIAN_ID_KEY)
+                        .remove(GUARDIAN_STATUS_KEY)
+                        .apply()
+                    result.success(guardianConfig())
                 }
                 "getCommunityReporterId" -> {
                     val preferences = getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE)
@@ -231,6 +268,16 @@ class MainActivity : FlutterActivity() {
         "callLogGranted" to hasCallLogPermission(),
     )
 
+    private fun guardianConfig(): Map<String, String> {
+        val preferences = getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE)
+        return mapOf(
+            "primaryAlias" to preferences.getString(GUARDIAN_PRIMARY_ALIAS_KEY, "").orEmpty(),
+            "guardianPhone" to preferences.getString(GUARDIAN_PHONE_KEY, "").orEmpty(),
+            "guardianId" to preferences.getString(GUARDIAN_ID_KEY, "").orEmpty(),
+            "status" to preferences.getString(GUARDIAN_STATUS_KEY, "not_configured").orEmpty(),
+        )
+    }
+
     private fun isDialerRoleSupported(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val manager = getSystemService(RoleManager::class.java)
@@ -303,6 +350,7 @@ class MainActivity : FlutterActivity() {
         startActivityForResult(intent, REQUEST_DIALER_ROLE)
     }
 
+    @TargetApi(Build.VERSION_CODES.Q)
     private fun requestCallScreening(result: MethodChannel.Result) {
         if (!isCallScreeningSupported()) {
             result.success(
@@ -433,6 +481,7 @@ class MainActivity : FlutterActivity() {
         "message" to if (granted) grantedMessage else deniedMessage,
     )
 
+    @SuppressLint("MissingPermission")
     private fun placeCall(rawNumber: String): Map<String, Any> {
         if (!isDefaultDialer()) {
             return mapOf("ok" to false, "message" to "Kavasam is not the default phone app.")
@@ -462,10 +511,15 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL_NAME = "app.kavasam/offline_phone"
+        private const val CALL_EVENTS_CHANNEL = "app.kavasam/call_events"
         private const val PRIVACY_PREFERENCES = "kavasam_privacy"
         private const val CLOUD_CONSENT_KEY = "cloud_ai_consent"
         private const val COMMUNITY_CONSENT_KEY = "community_reputation_consent"
         private const val COMMUNITY_REPORTER_ID_KEY = "community_reporter_id"
+        private const val GUARDIAN_PRIMARY_ALIAS_KEY = "guardian_primary_alias"
+        private const val GUARDIAN_PHONE_KEY = "guardian_phone"
+        private const val GUARDIAN_ID_KEY = "guardian_id"
+        private const val GUARDIAN_STATUS_KEY = "guardian_status"
         private const val REQUEST_DIALER_ROLE = 4101
         private const val REQUEST_PHONE_PERMISSIONS = 4102
         private const val REQUEST_SCREENING_ROLE = 4103

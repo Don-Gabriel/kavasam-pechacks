@@ -331,6 +331,9 @@ class CloudSafetyAssessment {
     required this.recommendedActions,
     required this.warningText,
     required this.source,
+    required this.vectorDatabase,
+    required this.vectorMatchLabel,
+    required this.vectorMatchSimilarity,
   });
 
   final int risk;
@@ -339,6 +342,9 @@ class CloudSafetyAssessment {
   final List<String> recommendedActions;
   final String warningText;
   final String source;
+  final String vectorDatabase;
+  final String vectorMatchLabel;
+  final double? vectorMatchSimilarity;
 
   factory CloudSafetyAssessment.fromJson(Map<String, Object?> value) =>
       CloudSafetyAssessment(
@@ -353,6 +359,15 @@ class CloudSafetyAssessment {
                 .toList(),
         warningText: value['warningText']?.toString() ?? '',
         source: value['source']?.toString() ?? 'gateway',
+        vectorDatabase: value['vectorDatabase']?.toString() ?? 'local-fallback',
+        vectorMatchLabel:
+            (value['vectorMatch'] as Map<Object?, Object?>?)?['label']
+                ?.toString() ??
+            '',
+        vectorMatchSimilarity:
+            ((value['vectorMatch'] as Map<Object?, Object?>?)?['similarity']
+                    as num?)
+                ?.toDouble(),
       );
 }
 
@@ -389,6 +404,90 @@ class CommunityReputation {
             .map((item) => item.toString())
             .toList(),
         source: value['source']?.toString() ?? 'none',
+      );
+}
+
+class GuardianConfig {
+  const GuardianConfig({
+    this.primaryAlias = '',
+    this.guardianPhone = '',
+    this.guardianId = '',
+    this.status = 'not_configured',
+  });
+
+  final String primaryAlias;
+  final String guardianPhone;
+  final String guardianId;
+  final String status;
+
+  bool get isConfigured =>
+      primaryAlias.isNotEmpty &&
+      guardianPhone.isNotEmpty &&
+      guardianId.isNotEmpty;
+  bool get isVerified => isConfigured && status == 'verified';
+
+  factory GuardianConfig.fromMap(Map<Object?, Object?> value) => GuardianConfig(
+    primaryAlias: value['primaryAlias']?.toString() ?? '',
+    guardianPhone: value['guardianPhone']?.toString() ?? '',
+    guardianId: value['guardianId']?.toString() ?? '',
+    status: value['status']?.toString() ?? 'not_configured',
+  );
+}
+
+class GuardianEnrollment {
+  const GuardianEnrollment({
+    required this.enrollmentId,
+    required this.status,
+    required this.expiresAt,
+    required this.message,
+  });
+
+  final String enrollmentId;
+  final String status;
+  final DateTime expiresAt;
+  final String message;
+
+  bool get isVerified => status == 'verified';
+
+  factory GuardianEnrollment.fromJson(Map<String, Object?> value) =>
+      GuardianEnrollment(
+        enrollmentId: value['enrollmentId']?.toString() ?? '',
+        status: value['status']?.toString() ?? 'pending',
+        expiresAt:
+            DateTime.tryParse(value['expiresAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        message: value['message']?.toString() ?? '',
+      );
+}
+
+class GuardianApproval {
+  const GuardianApproval({
+    required this.requestId,
+    required this.refCode,
+    required this.status,
+    required this.expiresAt,
+    required this.message,
+  });
+
+  final String requestId;
+  final String refCode;
+  final String status;
+  final DateTime expiresAt;
+  final String message;
+
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isDenied => status == 'rejected' || status == 'expired';
+
+  factory GuardianApproval.fromJson(Map<String, Object?> value) =>
+      GuardianApproval(
+        requestId: value['requestId']?.toString() ?? '',
+        refCode: value['refCode']?.toString() ?? '',
+        status: value['status']?.toString() ?? 'pending',
+        expiresAt:
+            DateTime.tryParse(value['expiresAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        message: value['message']?.toString() ?? '',
       );
 }
 

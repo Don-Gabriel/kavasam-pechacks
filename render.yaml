@@ -10,7 +10,19 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.7-flash
+      - key: ACTIAN_VECTORAI_URL
+        sync: false
+      - key: ACTIAN_VECTORAI_ACCESS_TOKEN
+        sync: false
+      - key: ACTIAN_VECTORAI_COLLECTION
+        value: kavasam_scam_patterns
+      - key: ACTIAN_VECTORAI_TIMEOUT_SECONDS
+        value: "2.5"
       - key: NUMBER_HMAC_SECRET
+        generateValue: true
+      - key: N8N_WEBHOOK_URL
+        sync: false
+      - key: N8N_WEBHOOK_SECRET
         generateValue: true
       - key: KAVASAM_DB_PATH
         value: /var/data/kavasam.db

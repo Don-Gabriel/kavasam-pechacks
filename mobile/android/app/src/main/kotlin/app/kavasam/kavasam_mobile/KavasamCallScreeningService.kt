@@ -13,7 +13,7 @@ class KavasamCallScreeningService : CallScreeningService() {
         } else {
             true
         }
-        val verificationFailed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val verificationFailed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             callDetails.callerNumberVerificationStatus == Connection.VERIFICATION_STATUS_FAILED
         } else {
             false

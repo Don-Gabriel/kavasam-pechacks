@@ -20,10 +20,11 @@ The current Android build does **not** capture cellular call audio. Android rese
 | Sponsor | Real product role | Data boundary | Prize demo |
 |---|---|---|---|
 | Gemini API | **Implemented.** Reason over a consented structured safety event and produce a short explanation plus safe next steps | Signal keys, local scores, coarse locale; no contact name, phone number, address book, audio, or raw call log | Compare local score with Gemini reasoning and show a grounded explanation |
+| Actian VectorAI DB | **Implemented.** Store versioned scam-behavior prototypes and retrieve the nearest pattern with cosine/HNSW search for every configured online analysis | A 12-value vector derived only from the allowlisted safety event; no phone number, identity, audio, transcript, contacts, or raw history | Trigger OTP, payment, remote-access, and impersonation signals; show the live Actian match label and similarity in the call-safety card |
 | ElevenLabs | Speak an urgent multilingual warning selected from the Gemini response | Warning text and language only | Demonstrate a Tamil/English spoken warning after an OTP or remote-access signal |
-| MongoDB Atlas Vector Search | Planned production scale-out for the implemented community reputation store | Server-HMAC number token or pattern vector; never store a raw phone number | Replace the SQLite repository with nearest scam-pattern retrieval when Atlas credentials are supplied |
+| MongoDB Atlas | Optional future scale-out for community report records only; Actian remains the vector engine | Server-HMAC number and reporter tokens; never store a raw phone number | Demonstrate migration of tokenized reputation records if this separate sponsor is pursued |
 | Snowflake | Aggregate privacy-safe program metrics for judges and fraud researchers | Daily counts and coarse categories only; no per-user identifiers | Dashboard of scam tactics, intervention rate, and false-positive feedback |
-| n8n | Run a user-confirmed escalation workflow | User-approved incident summary only | After confirmation, notify a guardian or create a support ticket; never auto-send |
+| n8n | **Implemented gateway contract.** Deliver opt-in and approval SMS, then authenticate inbound replies | Guardian number transiently, user alias, minimized risk summary, last four caller digits | User-triggered, fail-closed guardian approval; live delivery requires an n8n workflow and SMS-provider credentials |
 | Render | Host the minimal consent gateway and demo dashboard | Stateless API plus secret management | Deploy the Gemini/ElevenLabs gateway with health and audit endpoints |
 | Vultr | Host an optional open-model classifier or regional redundancy | Same minimized structured payload | Benchmark sponsor-hosted classifier against the local and Gemini scores |
 | Trace Commons | Provide reproducible evidence of the build process | Agent trace only after team consent and secret scanning | Submit the development trace and signed score attestation |
@@ -84,9 +85,9 @@ The response must remain advisory:
 1. **Complete:** offline consent button, structured signals, vector score, local summaries.
 2. **Complete:** Gemini consent gateway, Render blueprint, strict schema validation, and redaction tests. Live Gemini output requires a server-side key.
 3. **Complete:** persistent community reputation API with unique reporter deduplication and server-HMAC number identifiers.
-4. ElevenLabs multilingual warning playback with Android offline TTS fallback.
-5. MongoDB Atlas community-pattern scale-out using the existing server-HMAC identifiers.
-6. User-confirmed n8n guardian/escalation workflow.
+4. **Complete:** Actian VectorAI DB REST adapter, collection seeding, nearest-pattern retrieval, explicit attribution, health status, and fail-open tests. Live use requires an Actian instance.
+5. ElevenLabs multilingual warning playback with Android offline TTS fallback.
+6. **Complete:** user-confirmed n8n guardian/escalation gateway contract. Live delivery requires workflow and SMS credentials.
 7. Snowflake aggregate dashboard and Vultr classifier benchmark.
 8. Trace Commons submission after explicit team consent and secret scanning.
 

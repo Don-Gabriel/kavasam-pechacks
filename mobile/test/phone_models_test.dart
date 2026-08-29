@@ -104,10 +104,18 @@ void main() {
       'recommendedActions': ['End the call and verify independently'],
       'warningText': 'Never share an OTP.',
       'source': 'gemini',
+      'vectorDatabase': 'actian-vectorai',
+      'vectorMatch': {
+        'label': 'OTP or PIN credential theft',
+        'similarity': 0.93,
+      },
     });
 
     expect(assessment.risk, 84);
     expect(assessment.source, 'gemini');
+    expect(assessment.vectorDatabase, 'actian-vectorai');
+    expect(assessment.vectorMatchLabel, 'OTP or PIN credential theft');
+    expect(assessment.vectorMatchSimilarity, 0.93);
     expect(assessment.recommendedActions, hasLength(1));
   });
 
@@ -133,5 +141,25 @@ void main() {
     expect(rules.blockPrivate, isTrue);
     expect(rules.blockUnknown, isFalse);
     expect(rules.blockHighRisk, isTrue);
+  });
+
+  test('parses verified guardian state and approval outcome', () {
+    final guardian = GuardianConfig.fromMap({
+      'primaryAlias': 'Amma',
+      'guardianPhone': '+919876543210',
+      'guardianId': '2cbb470b-a2b0-4ea1-9c1b-2fe31a83ed12',
+      'status': 'verified',
+    });
+    final approval = GuardianApproval.fromJson({
+      'requestId': '66c43ccb-c0df-4662-bccf-81caf21b913e',
+      'refCode': '4821',
+      'status': 'approved',
+      'expiresAt': '2026-08-29T12:05:00Z',
+      'message': 'Guardian approved continuing the call.',
+    });
+
+    expect(guardian.isVerified, isTrue);
+    expect(approval.isApproved, isTrue);
+    expect(approval.isDenied, isFalse);
   });
 }

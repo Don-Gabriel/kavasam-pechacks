@@ -30,6 +30,7 @@ class _CallerScreenState extends State<CallerScreen>
   List<SafetySignalDefinition> _safetySignals = const [];
   final CloudSafetyService _cloudSafety = CloudSafetyService();
   Timer? _poller;
+  StreamSubscription<PhoneCallSnapshot?>? _callEvents;
   Timer? _lookupDebounce;
   int _tab = 0;
   bool _loadingRole = false;
@@ -39,6 +40,8 @@ class _CallerScreenState extends State<CallerScreen>
   bool _communityConsent = false;
   bool _communityLoading = false;
   String _reporterId = '';
+  GuardianConfig _guardian = const GuardianConfig();
+  bool _guardianBusy = false;
   String? _activeCommunityNumber;
   String? _message;
 
@@ -47,16 +50,18 @@ class _CallerScreenState extends State<CallerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshAll();
-    _poller = Timer.periodic(
-      const Duration(milliseconds: 750),
-      (_) => _refreshCall(),
+    _callEvents = widget.bridge.watchCurrentCall().listen(
+      _applyCallSnapshot,
+      onError: (_) {},
     );
+    _poller = Timer.periodic(const Duration(seconds: 5), (_) => _refreshCall());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poller?.cancel();
+    _callEvents?.cancel();
     _lookupDebounce?.cancel();
     _number.dispose();
     _contactSearch.dispose();
@@ -79,6 +84,7 @@ class _CallerScreenState extends State<CallerScreen>
       widget.bridge.getCommunityConsent(),
       widget.bridge.getCommunityReporterId(),
       widget.bridge.getProtectionSettings(),
+      widget.bridge.getGuardianConfig(),
     ]);
     final call = await widget.bridge.getCurrentCall();
     final pendingNumber = await widget.bridge.takePendingDialNumber();
@@ -93,6 +99,7 @@ class _CallerScreenState extends State<CallerScreen>
       _communityConsent = values[6] as bool;
       _reporterId = values[7] as String;
       _protectionRules = values[8] as CallProtectionRules;
+      _guardian = values[9] as GuardianConfig;
       _call = call;
       if (pendingNumber != null && pendingNumber.isNotEmpty) {
         _number.text = pendingNumber;
@@ -143,26 +150,175 @@ class _CallerScreenState extends State<CallerScreen>
     });
   }
 
+  Future<void> _setupGuardian() async {
+    final alias = TextEditingController(text: _guardian.primaryAlias);
+    final phone = TextEditingController(text: _guardian.guardianPhone);
+    final values = await showDialog<(String, String)>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Set up call-safety guardian'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: alias,
+              maxLength: 48,
+              decoration: const InputDecoration(
+                labelText: 'Your name for the SMS',
+                hintText: 'Example: Amma',
+              ),
+            ),
+            TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Guardian phone number',
+                hintText: '+91…',
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'The guardian must opt in by SMS before they can approve a suspicious call.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, (alias.text.trim(), phone.text.trim())),
+            child: const Text('Send opt-in'),
+          ),
+        ],
+      ),
+    );
+    alias.dispose();
+    phone.dispose();
+    if (values == null || !mounted) return;
+    if (values.$1.isEmpty ||
+        !RegExp(r'^\+?[0-9 ]{7,22}$').hasMatch(values.$2)) {
+      setState(
+        () => _message = 'Enter your name and a complete guardian number.',
+      );
+      return;
+    }
+    if (!_cloudSafety.isConfigured) {
+      setState(
+        () => _message =
+            'Deploy and configure the gateway before guardian setup.',
+      );
+      return;
+    }
+    setState(() => _guardianBusy = true);
+    try {
+      final enrollment = await _cloudSafety.enrollGuardian(
+        deviceId: _reporterId,
+        guardianPhone: values.$2.replaceAll(' ', ''),
+        primaryAlias: values.$1,
+      );
+      final saved = await widget.bridge.saveGuardianConfig(
+        GuardianConfig(
+          primaryAlias: values.$1,
+          guardianPhone: values.$2.replaceAll(' ', ''),
+          guardianId: enrollment.enrollmentId,
+          status: enrollment.status,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _guardian = saved;
+        _message = enrollment.message;
+      });
+    } on Object catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _guardianBusy = false);
+    }
+  }
+
+  Future<void> _checkGuardian() async {
+    if (!_guardian.isConfigured || _guardianBusy) return;
+    setState(() => _guardianBusy = true);
+    try {
+      final enrollment = await _cloudSafety.getGuardianEnrollment(
+        enrollmentId: _guardian.guardianId,
+        deviceId: _reporterId,
+      );
+      final saved = await widget.bridge.saveGuardianConfig(
+        GuardianConfig(
+          primaryAlias: _guardian.primaryAlias,
+          guardianPhone: _guardian.guardianPhone,
+          guardianId: _guardian.guardianId,
+          status: enrollment.status,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _guardian = saved;
+        _message = enrollment.message;
+      });
+    } on Object catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _guardianBusy = false);
+    }
+  }
+
+  Future<void> _removeGuardian() async {
+    final saved = await widget.bridge.clearGuardianConfig();
+    if (!mounted) return;
+    setState(() {
+      _guardian = saved;
+      _message = 'Guardian removed from this phone.';
+    });
+  }
+
   Future<void> _refreshCall() async {
-    final hadCall = _call != null;
     final call = await widget.bridge.getCurrentCall();
     final pendingNumber = await widget.bridge.takePendingDialNumber();
     if (!mounted) return;
-    setState(() {
-      _call = call;
-      if (pendingNumber != null && pendingNumber.isNotEmpty) {
-        _number.text = pendingNumber;
-        _scheduleLookup();
-      }
-    });
+    if (_callFingerprint(_call) != _callFingerprint(call) ||
+        pendingNumber != null) {
+      setState(() {
+        _call = call;
+        if (pendingNumber != null && pendingNumber.isNotEmpty) {
+          _number.text = pendingNumber;
+          _scheduleLookup();
+        }
+      });
+    }
+    _afterCallUpdate(call);
+  }
+
+  void _applyCallSnapshot(PhoneCallSnapshot? call) {
+    if (!mounted || _callFingerprint(_call) == _callFingerprint(call)) return;
+    setState(() => _call = call);
+    _afterCallUpdate(call);
+  }
+
+  void _afterCallUpdate(PhoneCallSnapshot? call) {
+    final hadCall = _activeCommunityNumber != null;
     if (call != null && call.number != _activeCommunityNumber) {
       _activeCommunityNumber = call.number;
       _lookupActiveCommunity(call.number);
     } else if (call == null) {
       _activeCommunityNumber = null;
-      _activeCommunity = null;
+      if (_activeCommunity != null && mounted) {
+        setState(() => _activeCommunity = null);
+      }
     }
-    if (hadCall && call == null) await _refreshAll();
+    if (hadCall && call == null) _refreshAll();
+  }
+
+  String _callFingerprint(PhoneCallSnapshot? call) {
+    if (call == null) return 'none';
+    return '${call.number}|${call.state}|${call.muted}|${call.speakerOn}|'
+        '${call.trackingEnabled}|${call.trackingRiskScore}|'
+        '${call.trackingSignals.join(',')}';
   }
 
   Future<void> _lookupActiveCommunity(String number) async {
@@ -561,6 +717,8 @@ class _CallerScreenState extends State<CallerScreen>
                     cloudSafety: _cloudSafety,
                     cloudConsent: _cloudConsent,
                     community: _activeCommunity,
+                    guardian: _guardian,
+                    deviceId: _reporterId,
                   ),
                 ],
               )
@@ -997,6 +1155,71 @@ class _CallerScreenState extends State<CallerScreen>
                 ),
                 Text(
                   '${_analytics.localReports} private spam reports recorded.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          color: const Color(0xFFFFF4E5),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.supervisor_account_rounded),
+                  ),
+                  title: const Text(
+                    'Guardian approval',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text(
+                    _guardian.isVerified
+                        ? 'Verified · ${_guardian.guardianPhone}'
+                        : _guardian.isConfigured
+                        ? 'Waiting for SMS opt-in'
+                        : 'Pause a suspicious call and ask a trusted person before continuing.',
+                  ),
+                ),
+                const Text(
+                  'Fail-safe: no reply or REJECT ends the call. The gateway stores a keyed phone token, not the raw guardian number.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _guardianBusy ? null : _setupGuardian,
+                      icon: _guardianBusy
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sms_rounded),
+                      label: Text(
+                        _guardian.isConfigured
+                            ? 'Send new opt-in'
+                            : 'Set up guardian',
+                      ),
+                    ),
+                    if (_guardian.isConfigured && !_guardian.isVerified)
+                      OutlinedButton.icon(
+                        onPressed: _guardianBusy ? null : _checkGuardian,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Check verification'),
+                      ),
+                    if (_guardian.isConfigured)
+                      TextButton(
+                        onPressed: _guardianBusy ? null : _removeGuardian,
+                        child: const Text('Remove'),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -1498,6 +1721,8 @@ class _ActiveCall extends StatelessWidget {
     required this.cloudSafety,
     required this.cloudConsent,
     required this.community,
+    required this.guardian,
+    required this.deviceId,
   });
 
   final PhoneCallSnapshot call;
@@ -1506,6 +1731,8 @@ class _ActiveCall extends StatelessWidget {
   final CloudSafetyService cloudSafety;
   final bool cloudConsent;
   final CommunityReputation? community;
+  final GuardianConfig guardian;
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {
@@ -1570,6 +1797,19 @@ class _ActiveCall extends StatelessWidget {
                 service: cloudSafety,
                 consent: cloudConsent,
               ),
+              if (call.trackingRiskScore >= 45) ...[
+                const SizedBox(height: 12),
+                _GuardianApprovalPanel(
+                  key: ValueKey(
+                    'guardian-${call.number}-${call.trackingStartedAt?.millisecondsSinceEpoch}',
+                  ),
+                  call: call,
+                  bridge: bridge,
+                  service: cloudSafety,
+                  guardian: guardian,
+                  deviceId: deviceId,
+                ),
+              ],
             ],
             const SizedBox(height: 28),
             if (call.isRinging)
@@ -1941,6 +2181,199 @@ class _SafetyTrackingPanel extends StatelessWidget {
   }
 }
 
+class _GuardianApprovalPanel extends StatefulWidget {
+  const _GuardianApprovalPanel({
+    super.key,
+    required this.call,
+    required this.bridge,
+    required this.service,
+    required this.guardian,
+    required this.deviceId,
+  });
+
+  final PhoneCallSnapshot call;
+  final PhoneBridge bridge;
+  final CloudSafetyService service;
+  final GuardianConfig guardian;
+  final String deviceId;
+
+  @override
+  State<_GuardianApprovalPanel> createState() => _GuardianApprovalPanelState();
+}
+
+class _GuardianApprovalPanelState extends State<_GuardianApprovalPanel> {
+  final String _callSessionId = CloudSafetyService.newSessionId();
+  GuardianApproval? _approval;
+  Timer? _poller;
+  bool _loading = false;
+  bool _resolved = false;
+  bool _mutedByGuardian = false;
+  bool _heldByGuardian = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _request() async {
+    if (_loading || !widget.guardian.isVerified) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    _mutedByGuardian = !widget.call.muted;
+    _heldByGuardian = widget.call.canHold && !widget.call.isHeld;
+    if (_mutedByGuardian) await widget.bridge.setMuted(true);
+    if (_heldByGuardian) await widget.bridge.setHeld(true);
+    try {
+      final approval = await widget.service.requestGuardianApproval(
+        deviceId: widget.deviceId,
+        guardian: widget.guardian,
+        callSessionId: _callSessionId,
+        call: widget.call,
+      );
+      if (!mounted) return;
+      setState(() => _approval = approval);
+      _poller = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    } on Object catch (error) {
+      await _denyForSafety(
+        'Guardian request failed, so the call was ended safely. $error',
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _poll() async {
+    final approval = _approval;
+    if (_resolved || approval == null) return;
+    if (DateTime.now().toUtc().isAfter(approval.expiresAt.toUtc())) {
+      await _denyForSafety('No guardian reply arrived before the timeout.');
+      return;
+    }
+    try {
+      final next = await widget.service.getGuardianApproval(
+        requestId: approval.requestId,
+        deviceId: widget.deviceId,
+      );
+      if (!mounted) return;
+      setState(() => _approval = next);
+      if (next.isApproved) {
+        _resolved = true;
+        _poller?.cancel();
+        await _restoreCall();
+      } else if (next.isDenied) {
+        await _denyForSafety(next.message);
+      }
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _restoreCall() async {
+    if (_heldByGuardian) await widget.bridge.setHeld(false);
+    if (_mutedByGuardian) await widget.bridge.setMuted(false);
+    _heldByGuardian = false;
+    _mutedByGuardian = false;
+  }
+
+  Future<void> _denyForSafety(String reason) async {
+    if (_resolved) return;
+    _resolved = true;
+    _poller?.cancel();
+    if (mounted) setState(() => _error = reason);
+    await widget.bridge.disconnect();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final approval = _approval;
+    final verified = widget.guardian.isVerified;
+    final pending = approval?.isPending == true;
+    final approved = approval?.isApproved == true;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.supervisor_account_rounded,
+                color: Colors.orangeAccent,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Guardian approval',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            !verified
+                ? 'Set up and verify a guardian in Insights first.'
+                : approved
+                ? 'Approved by your guardian. The call has resumed.'
+                : pending
+                ? 'Waiting for SMS reply · Ref #${approval!.refCode}. The call is paused and muted.'
+                : 'Pause this suspicious call and require a trusted person to approve continuing.',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFFFCDD2), fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  verified &&
+                      !_loading &&
+                      approval == null &&
+                      (widget.call.state == 'active' ||
+                          widget.call.state == 'holding')
+                  ? _request
+                  : null,
+              icon: _loading
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sms_rounded),
+              label: Text(
+                pending ? 'Waiting for guardian…' : 'Ask guardian to continue',
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'ACCEPT resumes. REJECT, timeout, or delivery failure keeps safety first. Only risk signals and the caller’s last four digits are shared.',
+            style: TextStyle(color: Colors.white54, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CloudAssessmentPanel extends StatefulWidget {
   const _CloudAssessmentPanel({
     required this.call,
@@ -2107,8 +2540,13 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
                 ),
               ),
           const SizedBox(height: 7),
+          if (assessment.vectorMatchLabel.isNotEmpty)
+            Text(
+              'Actian match: ${assessment.vectorMatchLabel} · ${((assessment.vectorMatchSimilarity ?? 0) * 100).round()}%',
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
           Text(
-            'Source: ${assessment.source} · advisory only · no phone number or audio sent',
+            'AI: ${assessment.source} · vectors: ${assessment.vectorDatabase} · advisory only · no phone number or audio sent',
             style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
           if (_error != null)

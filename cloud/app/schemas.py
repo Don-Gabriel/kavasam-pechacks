@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -36,6 +37,15 @@ class SafetyAnalysisRequest(BaseModel):
     locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
 
 
+class VectorPatternMatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: str = Field(max_length=64)
+    label: str = Field(max_length=120)
+    similarity: float = Field(ge=0.0, le=1.0)
+    riskFloor: int = Field(ge=0, le=100)
+
+
 class SafetyAnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -45,11 +55,21 @@ class SafetyAnalysisResponse(BaseModel):
     recommendedActions: list[str] = Field(max_length=4)
     warningText: str = Field(max_length=320)
     source: Literal["gemini", "rules-fallback"]
+    vectorDatabase: Literal[
+        "actian-vectorai", "actian-unavailable", "local-fallback"
+    ] = "local-fallback"
+    vectorMatch: VectorPatternMatch | None = None
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     geminiConfigured: bool
+    guardianConfigured: bool = False
+    actianConfigured: bool = False
+    actianStatus: Literal[
+        "not-configured", "not-checked", "ready", "unavailable"
+    ] = "not-configured"
+    actianCollection: str = "kavasam_scam_patterns"
     rawRequestRetention: Literal["none"] = "none"
     communityReputation: Literal["ready"] = "ready"
 
@@ -87,3 +107,66 @@ class CommunityReputationResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reasons: list[str] = Field(max_length=4)
     source: Literal["community", "none"]
+
+
+GuardianState = Literal["pending", "verified", "approved", "rejected", "expired"]
+
+
+class GuardianEnrollmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    deviceId: UUID = Field(strict=False)
+    guardianPhone: str = Field(pattern=r"^\+?[0-9]{7,18}$", max_length=18)
+    primaryAlias: str = Field(min_length=1, max_length=48)
+    locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
+
+
+class GuardianEnrollmentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enrollmentId: UUID
+    status: Literal["pending", "verified", "expired"]
+    expiresAt: datetime
+    delivery: Literal["n8n"]
+    message: str = Field(max_length=240)
+
+
+class GuardianApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    deviceId: UUID = Field(strict=False)
+    guardianId: UUID = Field(strict=False)
+    guardianPhone: str = Field(pattern=r"^\+?[0-9]{7,18}$", max_length=18)
+    callSessionId: UUID = Field(strict=False)
+    primaryAlias: str = Field(min_length=1, max_length=48)
+    callerLast4: str = Field(pattern=r"^[0-9]{0,4}$", max_length=4)
+    risk: int = Field(ge=0, le=100)
+    riskLabel: str = Field(min_length=1, max_length=40)
+    signals: list[SafetySignal] = Field(max_length=6)
+
+
+class GuardianApprovalResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requestId: UUID
+    refCode: str = Field(pattern=r"^[0-9]{4}$")
+    status: Literal["pending", "approved", "rejected", "expired"]
+    expiresAt: datetime
+    message: str = Field(max_length=240)
+
+
+class GuardianReplyRequest(BaseModel):
+    """Allowlisted payload sent only by the authenticated n8n workflow."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    senderPhone: str = Field(pattern=r"^\+?[0-9]{7,18}$", max_length=18)
+    message: str = Field(min_length=1, max_length=80)
+
+
+class GuardianReplyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    matched: bool
+    status: Literal["verified", "approved", "rejected", "unrecognized", "not_found"]
+    message: str = Field(max_length=240)

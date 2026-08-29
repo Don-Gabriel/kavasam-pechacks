@@ -4,10 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:kavasam_mobile/models/phone.dart';
 
 class PhoneBridge {
-  PhoneBridge({MethodChannel? channel})
-    : _channel = channel ?? const MethodChannel('app.kavasam/offline_phone');
+  PhoneBridge({MethodChannel? channel, EventChannel? callEvents})
+    : _channel = channel ?? const MethodChannel('app.kavasam/offline_phone'),
+      _callEvents = callEvents ?? const EventChannel('app.kavasam/call_events');
 
   final MethodChannel _channel;
+  final EventChannel _callEvents;
 
   Future<DialerStatus> getDialerStatus() async {
     final value = await _map('getDialerStatus');
@@ -76,6 +78,16 @@ class PhoneBridge {
   Future<PhoneCallSnapshot?> getCurrentCall() async {
     final value = await _map('getCurrentCall');
     return value == null ? null : PhoneCallSnapshot.fromMap(value);
+  }
+
+  Stream<PhoneCallSnapshot?> watchCurrentCall() {
+    if (!Platform.isAndroid) return const Stream.empty();
+    return _callEvents.receiveBroadcastStream().map((value) {
+      if (value == null) return null;
+      return PhoneCallSnapshot.fromMap(
+        Map<Object?, Object?>.from(value as Map),
+      );
+    });
   }
 
   Future<List<CallHistoryEntry>> getHistory() async {
@@ -197,6 +209,32 @@ class PhoneBridge {
   Future<bool> getCommunityConsent() => _bool('getCommunityConsent');
   Future<bool> setCommunityConsent(bool value) =>
       _bool('setCommunityConsent', {'value': value});
+
+  Future<GuardianConfig> getGuardianConfig() async {
+    final value = await _map('getGuardianConfig');
+    return value == null
+        ? const GuardianConfig()
+        : GuardianConfig.fromMap(value);
+  }
+
+  Future<GuardianConfig> saveGuardianConfig(GuardianConfig config) async {
+    final value = await _map('saveGuardianConfig', {
+      'primaryAlias': config.primaryAlias,
+      'guardianPhone': config.guardianPhone,
+      'guardianId': config.guardianId,
+      'status': config.status,
+    });
+    return value == null
+        ? const GuardianConfig()
+        : GuardianConfig.fromMap(value);
+  }
+
+  Future<GuardianConfig> clearGuardianConfig() async {
+    final value = await _map('clearGuardianConfig');
+    return value == null
+        ? const GuardianConfig()
+        : GuardianConfig.fromMap(value);
+  }
 
   Future<String> getCommunityReporterId() async {
     if (!Platform.isAndroid) return '';

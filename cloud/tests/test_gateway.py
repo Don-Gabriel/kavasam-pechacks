@@ -55,7 +55,17 @@ def test_api_accepts_redacted_json_and_never_caches() -> None:
     response = TestClient(app).post("/v1/safety/analyze", json=valid_event())
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-kavasam-vector-source"] == "local-fallback"
     assert response.json()["source"] in {"gemini", "rules-fallback"}
+    assert response.json()["vectorDatabase"] == "local-fallback"
+
+
+def test_health_discloses_actian_configuration_state() -> None:
+    response = TestClient(app).get("/health")
+    assert response.status_code == 200
+    assert response.json()["actianConfigured"] is False
+    assert response.json()["actianStatus"] == "not-configured"
+    assert response.json()["actianCollection"] == "kavasam_scam_patterns"
 
 
 def test_api_rejects_phone_number() -> None:
