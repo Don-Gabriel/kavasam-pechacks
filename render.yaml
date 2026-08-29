@@ -24,6 +24,6 @@ services:
       - key: N8N_WEBHOOK_URL
         sync: false
       - key: N8N_WEBHOOK_SECRET
-        generateValue: true
+        sync: false
       - key: KAVASAM_DB_PATH
         value: /tmp/kavasam.db
