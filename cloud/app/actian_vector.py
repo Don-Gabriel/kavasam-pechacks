@@ -140,7 +140,12 @@ class ActianVectorStore:
         if not self.configured:
             return None
         try:
-            await self._ensure_collection()
+            try:
+                await self._ensure_collection()
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 404:
+                    raise
+                await self._recreate_collection()
             try:
                 body = await self._search(event)
             except httpx.HTTPStatusError as error:
