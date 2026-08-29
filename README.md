@@ -165,6 +165,18 @@ flutter build apk --debug
 
 The APK is generated at `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
 
+If Windows reports `Unable to establish loopback connection` while Gradle is
+starting, run the repository's **Build Android demo APK** GitHub Actions
+workflow. It performs analysis, tests, Android lint, and a clean release build,
+then publishes an installable `kavasam-android-demo` artifact. The demo artifact
+uses `http://127.0.0.1:8080`; keep the USB connection and ADB reverse tunnel
+active to use the local Gemini/Actian gateway:
+
+```powershell
+& 'C:\Android\Sdk\platform-tools\adb.exe' reverse tcp:8080 tcp:8080
+& 'C:\Android\Sdk\platform-tools\adb.exe' install -r .\app-release.apk
+```
+
 ## Quick start: local hybrid mode
 
 The helper script starts the local gateway, creates an ADB reverse tunnel, compiles the gateway URL into the debug APK, installs it, restores the Android roles, and launches Kavasam.

@@ -1,0 +1,66 @@
+name: Build Android demo APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.1
+          cache: true
+
+      - name: Resolve packages
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze Dart
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Run Android lint
+        working-directory: mobile/android
+        run: ./gradlew lintDebug
+
+      - name: Build connected-demo APK
+        working-directory: mobile
+        run: >-
+          flutter build apk --release
+          --dart-define=KAVASAM_AI_BASE_URL=http://127.0.0.1:8080
+
+      - name: Create checksum
+        working-directory: mobile/build/app/outputs/flutter-apk
+        run: sha256sum app-release.apk > app-release.apk.sha256
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kavasam-android-demo
+          path: |
+            mobile/build/app/outputs/flutter-apk/app-release.apk
+            mobile/build/app/outputs/flutter-apk/app-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
