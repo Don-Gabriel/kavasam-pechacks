@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/core/theme.dart';
 import 'package:kavasam_mobile/screens/home_screen.dart';
 import 'package:kavasam_mobile/services/api_client.dart';
+import 'package:kavasam_mobile/services/native_guard_bridge.dart';
 
 void main() {
   runApp(const KavasamApp());
 }
 
 class KavasamApp extends StatefulWidget {
-  const KavasamApp({super.key, this.apiClient});
+  const KavasamApp({super.key, this.apiClient, this.guardBridge});
 
   final KavasamApiClient? apiClient;
+  final NativeGuardBridge? guardBridge;
 
   @override
   State<KavasamApp> createState() => _KavasamAppState();
@@ -18,12 +20,14 @@ class KavasamApp extends StatefulWidget {
 
 class _KavasamAppState extends State<KavasamApp> {
   late final KavasamApiClient _apiClient;
+  late final NativeGuardBridge _guardBridge;
   bool _paattiMode = false;
 
   @override
   void initState() {
     super.initState();
     _apiClient = widget.apiClient ?? KavasamApiClient();
+    _guardBridge = widget.guardBridge ?? NativeGuardBridge();
   }
 
   @override
@@ -46,6 +50,7 @@ class _KavasamAppState extends State<KavasamApp> {
       ),
       home: HomeScreen(
         apiClient: _apiClient,
+        guardBridge: _guardBridge,
         paattiMode: _paattiMode,
         onPaattiModeChanged: (enabled) => setState(() => _paattiMode = enabled),
       ),

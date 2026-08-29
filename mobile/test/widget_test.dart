@@ -6,15 +6,26 @@ import 'package:kavasam_mobile/main.dart';
 import 'package:kavasam_mobile/services/api_client.dart';
 
 void main() {
-  testWidgets('home presents the three prevention journeys', (tester) async {
+  testWidgets('home presents autonomous and active protection journeys', (
+    tester,
+  ) async {
     await tester.pumpWidget(KavasamApp(apiClient: _mockApiClient()));
 
     expect(find.text('KAVASAM'), findsOneWidget);
+    expect(find.text('Automatic Android shields'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Scan a payment QR'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Scan a payment QR'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Check a suspicious message'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Protect this call'), findsOneWidget);
     expect(find.text('Check a suspicious message'), findsOneWidget);
-    expect(find.text('Check before you pay'), findsOneWidget);
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -350));
-    await tester.pumpAndSettle();
-    expect(find.text('Suspicious call mode'), findsOneWidget);
   });
 
   testWidgets('Paatti Mode remains user-controlled', (tester) async {

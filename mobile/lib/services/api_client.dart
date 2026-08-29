@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:kavasam_mobile/models/risk_result.dart';
@@ -68,6 +69,28 @@ class KavasamApiClient {
     return RiskResult.fromJson(json);
   }
 
+  Future<RiskResult> analyzeImage({
+    required String path,
+    required String mimeType,
+    required String context,
+    required String language,
+  }) async {
+    await authenticateForDemo();
+    final bytes = await File(path).readAsBytes();
+    if (bytes.lengthInBytes > 5 * 1024 * 1024) {
+      throw const KavasamApiException(
+        'This image is larger than 5 MB. Share a screenshot or a smaller image.',
+      );
+    }
+    final json = await _send('/fraud/analyze-image', {
+      'image_base64': base64Encode(bytes),
+      'mime_type': mimeType,
+      'context': context,
+      'language': language,
+    });
+    return RiskResult.fromJson(json);
+  }
+
   Future<RiskResult> checkPayment({
     required String upiId,
     required String merchantName,
@@ -82,6 +105,48 @@ class KavasamApiClient {
       'context': context,
     });
     return RiskResult.fromJson(json);
+  }
+
+  Future<Map<String, dynamic>> addGuardian({
+    required String name,
+    required String phone,
+  }) async {
+    await authenticateForDemo();
+    return _send('/guardian/add', {
+      'guardian_name': name,
+      'guardian_phone': phone,
+    });
+  }
+
+  Future<Map<String, dynamic>> alertGuardian({
+    required String eventId,
+    required String message,
+  }) async {
+    await authenticateForDemo();
+    return _send('/guardian/alert', {'event_id': eventId, 'message': message});
+  }
+
+  Future<Map<String, dynamic>> generateReport({
+    required String eventId,
+    String notes = '',
+  }) async {
+    await authenticateForDemo();
+    return _send('/report/generate', {
+      'event_id': eventId,
+      'incident_notes': notes,
+    });
+  }
+
+  Future<List<int>> synthesizeWarning({
+    required String text,
+    required String language,
+  }) async {
+    await authenticateForDemo();
+    final response = await _send('/voice/warning', {
+      'text': text,
+      'language': language,
+    });
+    return base64Decode(response['audio_base64'] as String);
   }
 
   Future<Map<String, dynamic>> _send(

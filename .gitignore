@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
 .venv/
@@ -15,6 +16,10 @@ htmlcov/
 # Trace Commons local submission artifacts
 ids.json
 attestation.jws
+
+# Local JVM socket workaround for sandboxed Android builds
+.jtmp/
+.artifacts/
 
 # Ruflo/Codex local coordination state
 .claude-flow/

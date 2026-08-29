@@ -9,11 +9,17 @@ from app.domain.models import (
     GuardianLinkResponse,
 )
 from app.repositories.memory import InMemoryRepository
+from app.services.automation import N8nAutomationClient
 
 
 class GuardianService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(
+        self,
+        repository: InMemoryRepository,
+        automation: N8nAutomationClient | None = None,
+    ) -> None:
         self.repository = repository
+        self.automation = automation
 
     def add(self, user_id: str, request: GuardianAddRequest) -> GuardianLinkResponse:
         guardian_id = str(uuid.uuid4())
@@ -31,20 +37,41 @@ class GuardianService:
             status=record["status"],
         )
 
-    def alert(self, user_id: str, request: GuardianAlertRequest) -> GuardianAlertResponse:
+    async def alert(
+        self, user_id: str, request: GuardianAlertRequest
+    ) -> GuardianAlertResponse:
         recipients = [g for g in self.repository.guardians.get(user_id, [])]
         alert_id = str(uuid.uuid4())
-        self.repository.alerts.append(
-            {
-                "alert_id": alert_id,
-                "user_id": user_id,
-                "event_id": request.event_id,
-                "message": request.message,
-                "recipients": len(recipients),
-            }
-        )
+        record = {
+            "alert_id": alert_id,
+            "user_id": user_id,
+            "event_id": request.event_id,
+            "message": request.message,
+            "recipients": len(recipients),
+        }
+        self.repository.alerts.append(record)
+        delivered = False
+        if recipients and self.automation:
+            delivered = await self.automation.dispatch_guardian_alert(
+                {
+                    **record,
+                    "guardian_contacts": [
+                        {
+                            "name": guardian["guardian_name"],
+                            "phone": guardian["guardian_phone"],
+                        }
+                        for guardian in recipients
+                    ],
+                }
+            )
         return GuardianAlertResponse(
             alert_id=alert_id,
-            status="QUEUED" if recipients else "NO_GUARDIAN_LINKED",
+            status=(
+                "DELIVERED_TO_AUTOMATION"
+                if delivered
+                else "QUEUED"
+                if recipients
+                else "NO_GUARDIAN_LINKED"
+            ),
             recipients=len(recipients),
         )

@@ -54,3 +54,20 @@ def test_guardian_link_starts_pending_and_alert_is_recorded(
     assert alert.status_code == 200
     assert alert.json()["status"] == "QUEUED"
     assert alert.json()["recipients"] == 1
+
+
+def test_upi_qr_without_fixed_amount_can_still_be_checked(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    response = client.post(
+        "/payment/check",
+        headers=auth_headers,
+        json={
+            "upi_id": "merchant@okaxis",
+            "merchant_name": "Local Store",
+            "amount": 0,
+            "context": "",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] in {"SAFE", "VERIFY", "WARNING"}

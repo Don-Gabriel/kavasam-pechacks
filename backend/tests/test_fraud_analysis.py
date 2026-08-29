@@ -56,3 +56,31 @@ def test_feedback_requires_owned_event(client: TestClient, auth_headers: dict[st
         json={"event_id": "missing-event", "user_verdict": "FRAUD"},
     )
     assert response.status_code == 404
+
+
+def test_image_analysis_uses_ocr_context_without_cloud_key(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    response = client.post(
+        "/fraud/analyze-image",
+        headers=auth_headers,
+        json={
+            "image_base64": "A" * 24,
+            "mime_type": "image/png",
+            "context": "CBI digital arrest. Transfer money immediately.",
+            "language": "English",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["risk_level"] in {"HIGH", "CRITICAL"}
+
+
+def test_natural_voice_reports_missing_optional_provider(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    response = client.post(
+        "/voice/warning",
+        headers=auth_headers,
+        json={"text": "Do not send money.", "language": "English"},
+    )
+    assert response.status_code == 503

@@ -80,7 +80,7 @@ class FraudAnalysisResponse(BaseModel):
 class PaymentCheckRequest(BaseModel):
     upi_id: str = Field(min_length=3, max_length=120)
     merchant_name: str = Field(min_length=1, max_length=160)
-    amount: float = Field(gt=0, le=10_000_000)
+    amount: float = Field(ge=0, le=10_000_000)
     context: str = Field(default="", max_length=2_000)
 
 
@@ -136,3 +136,14 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackResponse(BaseModel):
     status: str
+
+
+class VoiceWarningRequest(BaseModel):
+    text: str = Field(min_length=2, max_length=500)
+    language: str = Field(default="English", min_length=2, max_length=40)
+
+
+class VoiceWarningResponse(BaseModel):
+    audio_base64: str
+    mime_type: str = "audio/mpeg"
+    provider: str = "elevenlabs"

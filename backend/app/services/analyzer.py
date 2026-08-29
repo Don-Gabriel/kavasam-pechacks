@@ -81,7 +81,44 @@ class FraudAnalyzer:
         context: str,
         language: str,
     ) -> FraudAnalysisResponse:
-        # The adapter boundary is ready for multimodal Gemini. Context is analyzed now so
-        # local demos stay useful without uploading sensitive images to a third party.
         local_context = context or f"User submitted a {mime_type} image for fraud analysis."
-        return await self.analyze_text(user_id, local_context, language, kind="IMAGE")
+        local_result = await self.analyze_text(
+            user_id,
+            local_context,
+            language,
+            kind="IMAGE",
+        )
+        ai_assessment = (
+            await self.gemini.analyze_image(
+                image_base64,
+                mime_type,
+                context,
+                language,
+            )
+            if self.gemini
+            else None
+        )
+        if not ai_assessment:
+            return local_result
+
+        score = max(local_result.risk_score, ai_assessment.risk_score)
+        level = risk_level(score)
+        reasons = list(local_result.reasons)
+        reasons.extend(reason for reason in ai_assessment.evidence if reason not in reasons)
+        result = {
+            "risk_score": score,
+            "risk_level": level,
+            "fraud_type": (
+                ai_assessment.fraud_type
+                if ai_assessment.risk_score >= local_result.risk_score
+                else local_result.fraud_type
+            ),
+            "confidence": max(local_result.confidence, ai_assessment.confidence),
+            "reasons": reasons,
+            "warning": ai_assessment.warning,
+            "recommended_action": ai_assessment.recommended_action,
+            "analysis_source": "rules+gemini-vision",
+        }
+        event_id = local_result.event_id
+        self.repository.events[event_id]["result"] = result
+        return FraudAnalysisResponse(event_id=event_id, **result)

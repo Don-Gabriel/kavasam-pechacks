@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/models/risk_result.dart';
 import 'package:kavasam_mobile/services/api_client.dart';
 import 'package:kavasam_mobile/widgets/protection_scaffold.dart';
+import 'package:kavasam_mobile/widgets/incident_actions.dart';
 import 'package:kavasam_mobile/widgets/risk_result_card.dart';
+import 'package:kavasam_mobile/widgets/spoken_warning_button.dart';
 
 class MessageAnalyzerScreen extends StatefulWidget {
   const MessageAnalyzerScreen({super.key, required this.apiClient});
@@ -57,7 +59,7 @@ class _MessageAnalyzerScreenState extends State<MessageAnalyzerScreen> {
     return ProtectionScaffold(
       title: 'Message Check',
       subtitle:
-          'Paste only the suspicious text you want Kavasam to inspect. Nothing is read automatically.',
+          'Share a suspicious message directly to Kavasam for one-tap analysis, or paste it here.',
       children: [
         TextField(
           controller: _messageController,
@@ -107,6 +109,14 @@ class _MessageAnalyzerScreenState extends State<MessageAnalyzerScreen> {
         if (_result != null) ...[
           const SizedBox(height: 24),
           RiskResultCard(result: _result!),
+          const SizedBox(height: 12),
+          SpokenWarningButton(
+            text: _result!.warning,
+            language: _language,
+            apiClient: widget.apiClient,
+          ),
+          const SizedBox(height: 12),
+          IncidentActions(apiClient: widget.apiClient, result: _result!),
         ],
       ],
     );

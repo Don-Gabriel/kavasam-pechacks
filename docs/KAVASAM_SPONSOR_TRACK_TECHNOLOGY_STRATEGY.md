@@ -1,5 +1,7 @@
 # KAVASAM Sponsor Technology Utilization & Hackathon Track Strategy
 
+> Implementation truth source: see `ANDROID_BUILD_AND_SPONSOR_STATUS.md`. Sponsor features must be described as integrated, credential-required, deployed, or future exactly as recorded there. Do not present planned MongoDB/Render work as already live.
+
 ## Purpose
 
 This document defines the efficient use of PEC Hacks 4.0 sponsor

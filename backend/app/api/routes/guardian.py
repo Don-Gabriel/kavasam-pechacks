@@ -21,9 +21,9 @@ def add_guardian(
 
 
 @router.post("/alert", response_model=GuardianAlertResponse)
-def alert_guardians(
+async def alert_guardians(
     request: GuardianAlertRequest, user_id: CurrentUser, container: Container
 ) -> GuardianAlertResponse:
     if not container.repository.get_event(user_id, request.event_id):
         raise HTTPException(status_code=404, detail="Fraud event not found")
-    return container.guardians.alert(user_id, request)
+    return await container.guardians.alert(user_id, request)

@@ -7,7 +7,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, fraud, guardian, payment, report
+from app.api.routes import auth, fraud, guardian, payment, report, voice
 from app.container import AppContainer
 from app.core.config import Settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
@@ -52,11 +52,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     @app.get("/health", tags=["operations"])
-    def health() -> dict[str, str]:
+    def health() -> dict[str, object]:
         return {
             "status": "ok",
             "environment": active_settings.environment,
             "ai": "gemini" if active_settings.gemini_api_key else "rules-only",
+            "integrations": {
+                "gemini": bool(active_settings.gemini_api_key),
+                "n8n": bool(active_settings.n8n_guardian_webhook_url),
+                "elevenlabs": bool(active_settings.elevenlabs_api_key),
+            },
         }
 
     app.include_router(auth.router)
@@ -64,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(payment.router)
     app.include_router(guardian.router)
     app.include_router(report.router)
+    app.include_router(voice.router)
     return app
 
 

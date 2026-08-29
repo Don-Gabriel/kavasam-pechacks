@@ -18,6 +18,11 @@ class Settings:
     cors_origins: tuple[str, ...] = ("http://localhost:3000", "http://localhost:5000")
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.7-flash"
+    n8n_guardian_webhook_url: str | None = None
+    n8n_signing_secret: str | None = None
+    elevenlabs_api_key: str | None = None
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_model: str = "eleven_multilingual_v2"
 
     @property
     def is_production(self) -> bool:
@@ -48,4 +53,13 @@ class Settings:
             cors_origins=origins,
             gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
+            n8n_guardian_webhook_url=os.getenv("N8N_GUARDIAN_WEBHOOK_URL") or None,
+            n8n_signing_secret=os.getenv("N8N_SIGNING_SECRET") or None,
+            elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
+            elevenlabs_voice_id=os.getenv(
+                "ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"
+            ),
+            elevenlabs_model=os.getenv(
+                "ELEVENLABS_MODEL", "eleven_multilingual_v2"
+            ),
         )
