@@ -97,6 +97,60 @@ def test_actian_failure_fails_open_to_local_advice() -> None:
     assert result.reasons
 
 
+def test_actian_recreates_stale_collection_after_search_404() -> None:
+    requests: list[httpx.Request] = []
+    search_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal search_attempts
+        requests.append(request)
+        if request.method == "POST":
+            search_attempts += 1
+            if search_attempts == 1:
+                return httpx.Response(
+                    404,
+                    json={"status": {"error": "Collection not found"}},
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "result": [
+                        {
+                            "id": 2,
+                            "score": 0.91,
+                            "payload": {
+                                "category": "payment_fraud",
+                                "label": "Urgent payment or transfer fraud",
+                                "risk_floor": 90,
+                                "reason": "The signal pattern resembles urgent payment fraud.",
+                            },
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(200, json={"status": "ok", "result": True})
+
+    store = ActianVectorStore(
+        base_url="http://vectorai.test:6573",
+        transport=httpx.MockTransport(handler),
+    )
+    match = asyncio.run(store.match(event()))
+
+    assert match is not None
+    assert match.category == "payment_fraud"
+    assert [request.method for request in requests] == [
+        "PUT",
+        "PUT",
+        "POST",
+        "DELETE",
+        "PUT",
+        "PUT",
+        "POST",
+    ]
+    assert store.status == "ready"
+
+
 def test_actian_match_is_visible_and_can_raise_advisory_risk() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":

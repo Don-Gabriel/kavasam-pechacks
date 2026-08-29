@@ -141,18 +141,13 @@ class ActianVectorStore:
             return None
         try:
             await self._ensure_collection()
-            collection = quote(self.collection, safe="")
-            body = await self._request(
-                "POST",
-                f"/collections/{collection}/points/search",
-                json={
-                    "vector": safety_vector(event),
-                    "limit": 1,
-                    "score_threshold": 0.58,
-                    "with_payload": True,
-                    "with_vector": False,
-                },
-            )
+            try:
+                body = await self._search(event)
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 404:
+                    raise
+                await self._recreate_collection()
+                body = await self._search(event)
             results = body.get("result")
             if not isinstance(results, list) or not results:
                 self._status = "ready"
@@ -181,27 +176,58 @@ class ActianVectorStore:
         async with self._initialization_lock:
             if self._ready:
                 return
-            collection = quote(self.collection, safe="")
-            await self._request(
-                "PUT",
-                f"/collections/{collection}",
-                json={"vectors": {"size": self.dimension, "distance": "Cosine"}},
-                accepted_statuses={200, 409},
-            )
-            await self._request(
-                "PUT",
-                f"/collections/{collection}/points?wait=true",
-                json={"points": list(SCAM_PATTERNS)},
-            )
+            await self._create_and_seed_collection()
             self._ready = True
             self._status = "ready"
+
+    async def _recreate_collection(self) -> None:
+        async with self._initialization_lock:
+            collection = quote(self.collection, safe="")
+            self._ready = False
+            await self._request(
+                "DELETE",
+                f"/collections/{collection}",
+                json=None,
+                accepted_statuses={200, 404},
+            )
+            await self._create_and_seed_collection()
+            self._ready = True
+            self._status = "ready"
+
+    async def _create_and_seed_collection(self) -> None:
+        collection = quote(self.collection, safe="")
+        await self._request(
+            "PUT",
+            f"/collections/{collection}",
+            json={"vectors": {"size": self.dimension, "distance": "Cosine"}},
+            accepted_statuses={200, 409},
+        )
+        await self._request(
+            "PUT",
+            f"/collections/{collection}/points?wait=true",
+            json={"points": list(SCAM_PATTERNS)},
+        )
+
+    async def _search(self, event: SafetyAnalysisRequest) -> dict[str, object]:
+        collection = quote(self.collection, safe="")
+        return await self._request(
+            "POST",
+            f"/collections/{collection}/points/search",
+            json={
+                "vector": safety_vector(event),
+                "limit": 1,
+                "score_threshold": 0.58,
+                "with_payload": True,
+                "with_vector": False,
+            },
+        )
 
     async def _request(
         self,
         method: str,
         path: str,
         *,
-        json: dict[str, object],
+        json: dict[str, object] | None,
         accepted_statuses: set[int] | None = None,
     ) -> dict[str, object]:
         async with httpx.AsyncClient(
