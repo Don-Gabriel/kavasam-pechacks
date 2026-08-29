@@ -42,6 +42,10 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pytest -q
 
+      - name: Restore generated Android wrapper
+        working-directory: mobile
+        run: flutter create --platforms=android .
+
       - name: Resolve packages
         working-directory: mobile
         run: flutter pub get
