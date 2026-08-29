@@ -18,7 +18,7 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
-| Render deployment | Ready | Dockerfile and Blueprint included |
+| Render deployment | Demo-ready | Free Blueprint included; gateway data is ephemeral |
 | Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture it |
 | Production signing | Required before release | Debug signing is used for development builds |
 
@@ -278,15 +278,14 @@ The schema rejects extra fields. Phone numbers, names, audio, transcripts, and c
 
 One reporter contributes at most one active category per number. A repeated report updates the category rather than inflating the count.
 
-## Production deployment on Render
+## Free demo deployment on Render
 
 1. Connect the repository to Render.
 2. Create services from `render.yaml`.
 3. Add `GEMINI_API_KEY` as a secret.
 4. Keep the generated `NUMBER_HMAC_SECRET` stable. Rotating it makes existing number tokens unsearchable.
-5. Confirm the persistent disk is mounted at `/var/data`.
-6. Verify `https://your-service/health`.
-7. Build the app with the HTTPS endpoint:
+5. Verify `https://your-service/health`.
+6. Build the app with the HTTPS endpoint:
 
 ```powershell
 cd mobile
@@ -295,6 +294,8 @@ flutter build apk --release `
 ```
 
 Replace debug signing in `mobile/android/app/build.gradle.kts` with a protected release keystore before distribution.
+
+The included Blueprint explicitly uses Render's `free` web-service plan and `/tmp/kavasam.db`. Free services have ephemeral filesystems, so community reports, guardian enrollments, and pending approvals reset after a restart, redeploy, or spin-down. This is intentional for the hackathon demo and must be replaced with managed persistent storage before production use.
 
 ## First-launch setup
 

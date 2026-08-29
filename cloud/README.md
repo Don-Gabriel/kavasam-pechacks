@@ -16,6 +16,8 @@ python -m venv .venv
 
 `app.main` automatically loads `cloud/.env` for local development. Hosting environment variables keep priority, and Docker/Render deployments do not copy the local secrets file.
 
+The repository's Render Blueprint uses the free web-service plan and stores its demo SQLite database at `/tmp/kavasam.db`. That data is intentionally ephemeral and can reset whenever the free instance restarts, redeploys, or spins down.
+
 Endpoints:
 
 - `GET /health`

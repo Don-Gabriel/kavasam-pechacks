@@ -2,6 +2,7 @@ services:
   - type: web
     name: kavasam-consent-gateway
     runtime: docker
+    plan: free
     dockerfilePath: ./cloud/Dockerfile
     dockerContext: ./cloud
     healthCheckPath: /health
@@ -25,8 +26,4 @@ services:
       - key: N8N_WEBHOOK_SECRET
         generateValue: true
       - key: KAVASAM_DB_PATH
-        value: /var/data/kavasam.db
-    disk:
-      name: kavasam-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: /tmp/kavasam.db
