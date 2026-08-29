@@ -130,6 +130,13 @@ class MainActivity : FlutterActivity() {
                     CallerIdentityStore.analytics(this) + CallSafetyTracker.analytics(this),
                 )
                 "getSafetySignals" -> result.success(CallSafetyTracker.availableSignals())
+                "getHighRiskAnalyses" -> result.success(CallSafetyTracker.highRiskAnalyses(this))
+                "saveHighRiskAnalysis" -> result.success(
+                    CallSafetyTracker.saveHighRiskAnalysis(
+                        this,
+                        call.arguments<Map<String, Any?>>() ?: emptyMap(),
+                    ),
+                )
                 "getProtectionSettings" -> result.success(CallProtectionSettings.snapshot(this))
                 "setProtectionSetting" -> result.success(
                     CallProtectionSettings.set(
@@ -181,6 +188,25 @@ class MainActivity : FlutterActivity() {
                         .remove(GUARDIAN_STATUS_KEY)
                         .apply()
                     result.success(guardianConfig())
+                }
+                "getGuardianViewerConfig" -> result.success(guardianViewerConfig())
+                "saveGuardianViewerConfig" -> {
+                    getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE).edit()
+                        .putString(GUARDIAN_VIEWER_ID_KEY, call.argument<String>("guardianId").orEmpty())
+                        .putString(GUARDIAN_VIEWER_ALIAS_KEY, call.argument<String>("primaryAlias").orEmpty())
+                        .putString(GUARDIAN_VIEWER_TOKEN_KEY, call.argument<String>("sessionToken").orEmpty())
+                        .putLong(GUARDIAN_VIEWER_EXPIRES_KEY, call.argument<Number>("expiresAt")?.toLong() ?: 0L)
+                        .apply()
+                    result.success(guardianViewerConfig())
+                }
+                "clearGuardianViewerConfig" -> {
+                    getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE).edit()
+                        .remove(GUARDIAN_VIEWER_ID_KEY)
+                        .remove(GUARDIAN_VIEWER_ALIAS_KEY)
+                        .remove(GUARDIAN_VIEWER_TOKEN_KEY)
+                        .remove(GUARDIAN_VIEWER_EXPIRES_KEY)
+                        .apply()
+                    result.success(guardianViewerConfig())
                 }
                 "getCommunityReporterId" -> {
                     val preferences = getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE)
@@ -275,6 +301,16 @@ class MainActivity : FlutterActivity() {
             "guardianPhone" to preferences.getString(GUARDIAN_PHONE_KEY, "").orEmpty(),
             "guardianId" to preferences.getString(GUARDIAN_ID_KEY, "").orEmpty(),
             "status" to preferences.getString(GUARDIAN_STATUS_KEY, "not_configured").orEmpty(),
+        )
+    }
+
+    private fun guardianViewerConfig(): Map<String, Any> {
+        val preferences = getSharedPreferences(PRIVACY_PREFERENCES, MODE_PRIVATE)
+        return mapOf(
+            "guardianId" to preferences.getString(GUARDIAN_VIEWER_ID_KEY, "").orEmpty(),
+            "primaryAlias" to preferences.getString(GUARDIAN_VIEWER_ALIAS_KEY, "").orEmpty(),
+            "sessionToken" to preferences.getString(GUARDIAN_VIEWER_TOKEN_KEY, "").orEmpty(),
+            "expiresAt" to preferences.getLong(GUARDIAN_VIEWER_EXPIRES_KEY, 0L),
         )
     }
 
@@ -520,6 +556,10 @@ class MainActivity : FlutterActivity() {
         private const val GUARDIAN_PHONE_KEY = "guardian_phone"
         private const val GUARDIAN_ID_KEY = "guardian_id"
         private const val GUARDIAN_STATUS_KEY = "guardian_status"
+        private const val GUARDIAN_VIEWER_ID_KEY = "guardian_viewer_id"
+        private const val GUARDIAN_VIEWER_ALIAS_KEY = "guardian_viewer_alias"
+        private const val GUARDIAN_VIEWER_TOKEN_KEY = "guardian_viewer_session_token"
+        private const val GUARDIAN_VIEWER_EXPIRES_KEY = "guardian_viewer_expires_at"
         private const val REQUEST_DIALER_ROLE = 4101
         private const val REQUEST_PHONE_PERMISSIONS = 4102
         private const val REQUEST_SCREENING_ROLE = 4103

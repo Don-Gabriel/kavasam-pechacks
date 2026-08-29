@@ -6,10 +6,12 @@ Kavasam uses n8n as the provider-neutral boundary between the consent gateway an
 
 1. Create an n8n **Webhook** node using `POST` and header authentication.
 2. Use `X-Kavasam-Webhook-Secret` as the required header and the same value as the gateway's `N8N_WEBHOOK_SECRET` environment secret.
-3. Add a **Switch** node on `{{$json.event}}`. Supported values are `guardian_enrollment` and `guardian_approval`.
+3. Add a **Switch** node on `{{$json.event}}`. Supported values are `guardian_enrollment`, `guardian_approval`, and `guardian_report`.
 4. Pass `{{$json.to}}` and `{{$json.message}}` to the selected two-way SMS provider's node or HTTP API.
 5. Return HTTP `202` only after the provider accepts the message. Return a non-2xx response on failure so Kavasam can fail closed.
 6. Copy the workflow's production webhook URL into the gateway's `N8N_WEBHOOK_URL` secret.
+
+`guardian_report` is generated only after the user starts tracking and the AI risk score exceeds 80. It contains the protected user's chosen alias, the caller's last four digits, the minimized risk summary, and the risk score. It never contains call audio or a transcript.
 
 Kavasam also sends `reference`, `replyWebhookUrl`, and—for approval messages—`expiresInSeconds`. Do not add phone numbers or message bodies to n8n execution logs in production.
 

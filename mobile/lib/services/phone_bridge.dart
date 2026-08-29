@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:kavasam_mobile/models/phone.dart';
+import 'package:kavasam_mobile/models/security_analysis.dart';
 
 class PhoneBridge {
   PhoneBridge({MethodChannel? channel, EventChannel? callEvents})
@@ -234,6 +235,73 @@ class PhoneBridge {
     return value == null
         ? const GuardianConfig()
         : GuardianConfig.fromMap(value);
+  }
+
+  Future<bool> saveHighRiskAnalysis({
+    required String reportId,
+    required String callSessionId,
+    required PhoneCallSnapshot call,
+    required CloudSafetyAssessment assessment,
+  }) => _bool('saveHighRiskAnalysis', {
+    'reportId': reportId,
+    'callSessionId': callSessionId,
+    'number': call.number,
+    'displayName': call.displayName,
+    'occurredAt': DateTime.now().millisecondsSinceEpoch,
+    'risk': assessment.risk,
+    'riskLabel': assessment.risk > 80 ? 'Dangerous' : assessment.level,
+    'summary': assessment.warningText,
+    'source': assessment.source,
+    'vectorDatabase': assessment.vectorDatabase,
+    'signals': call.trackingSignals,
+  });
+
+  Future<List<HighRiskAnalysis>> getHighRiskAnalyses() async {
+    if (!Platform.isAndroid) return const [];
+    try {
+      final values = await _channel.invokeMethod<List<Object?>>(
+        'getHighRiskAnalyses',
+      );
+      return (values ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) =>
+                HighRiskAnalysis.fromMap(Map<Object?, Object?>.from(item)),
+          )
+          .toList();
+    } on PlatformException {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  Future<GuardianViewerConfig> getGuardianViewerConfig() async {
+    final value = await _map('getGuardianViewerConfig');
+    return value == null
+        ? const GuardianViewerConfig()
+        : GuardianViewerConfig.fromMap(value);
+  }
+
+  Future<GuardianViewerConfig> saveGuardianViewerConfig(
+    GuardianViewerConfig config,
+  ) async {
+    final value = await _map('saveGuardianViewerConfig', {
+      'guardianId': config.guardianId,
+      'primaryAlias': config.primaryAlias,
+      'sessionToken': config.sessionToken,
+      'expiresAt': config.expiresAt?.millisecondsSinceEpoch ?? 0,
+    });
+    return value == null
+        ? const GuardianViewerConfig()
+        : GuardianViewerConfig.fromMap(value);
+  }
+
+  Future<GuardianViewerConfig> clearGuardianViewerConfig() async {
+    final value = await _map('clearGuardianViewerConfig');
+    return value == null
+        ? const GuardianViewerConfig()
+        : GuardianViewerConfig.fromMap(value);
   }
 
   Future<String> getCommunityReporterId() async {

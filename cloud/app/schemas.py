@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 SafetySignal = Literal[
@@ -72,6 +72,80 @@ class HealthResponse(BaseModel):
     actianCollection: str = "kavasam_scam_patterns"
     rawRequestRetention: Literal["none"] = "none"
     communityReputation: Literal["ready"] = "ready"
+    snowflakeConfigured: bool = False
+    snowflakeStatus: Literal[
+        "not-configured", "not-checked", "ready", "unavailable"
+    ] = "not-configured"
+
+
+ContentKind = Literal["message", "qr"]
+FileContentKind = Literal["email_pdf", "screenshot"]
+
+
+class ContentAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    schemaVersion: Literal[1]
+    sessionId: UUID = Field(strict=False)
+    kind: ContentKind
+    text: str = Field(min_length=1, max_length=20_000)
+    locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
+
+
+class FileAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    schemaVersion: Literal[1]
+    sessionId: UUID = Field(strict=False)
+    kind: FileContentKind
+    fileName: str = Field(min_length=1, max_length=160)
+    mimeType: Literal["application/pdf", "image/jpeg", "image/png", "image/webp"]
+    dataBase64: str = Field(min_length=4, max_length=12_000_000)
+    locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
+
+    @model_validator(mode="after")
+    def validate_kind_and_mime(self) -> "FileAnalysisRequest":
+        if self.kind == "email_pdf" and self.mimeType != "application/pdf":
+            raise ValueError("Email analysis accepts PDF files only.")
+        if self.kind == "screenshot" and not self.mimeType.startswith("image/"):
+            raise ValueError("Screenshot analysis accepts image files only.")
+        return self
+
+
+class UrlAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    schemaVersion: Literal[1]
+    sessionId: UUID = Field(strict=False)
+    url: str = Field(min_length=4, max_length=2_048)
+    locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
+
+
+class UrlAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    originalHost: str = Field(max_length=253)
+    finalHost: str = Field(max_length=253)
+    redirectCount: int = Field(ge=0, le=5)
+    redirectChain: list[str] = Field(max_length=6)
+    usesShortener: bool
+    hostChanged: bool
+    reachable: bool
+
+
+class ContentAnalysisResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    risk: int = Field(ge=0, le=100)
+    level: Literal["low", "medium", "high", "critical"]
+    category: str = Field(max_length=80)
+    summary: str = Field(max_length=360)
+    reasons: list[str] = Field(max_length=5)
+    recommendedActions: list[str] = Field(max_length=5)
+    indicators: list[str] = Field(max_length=10)
+    source: Literal["gemini", "rules-fallback"]
+    extractedTextPreview: str = Field(default="", max_length=500)
+    urlAssessment: UrlAssessment | None = None
 
 
 SpamCategory = Literal[
@@ -170,3 +244,64 @@ class GuardianReplyResponse(BaseModel):
     matched: bool
     status: Literal["verified", "approved", "rejected", "unrecognized", "not_found"]
     message: str = Field(max_length=240)
+
+
+class GuardianClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    guardianPhone: str = Field(pattern=r"^\+?[0-9]{7,18}$", max_length=18)
+    referenceCode: str = Field(pattern=r"^[0-9]{4}$")
+    guardianDeviceId: UUID = Field(strict=False)
+
+
+class GuardianClaimResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    guardianId: UUID
+    sessionToken: str = Field(min_length=32, max_length=128)
+    primaryAlias: str = Field(min_length=1, max_length=48)
+    expiresAt: datetime
+    message: str = Field(max_length=240)
+
+
+class GuardianReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    reportId: UUID = Field(strict=False)
+    deviceId: UUID = Field(strict=False)
+    guardianId: UUID = Field(strict=False)
+    guardianPhone: str = Field(pattern=r"^\+?[0-9]{7,18}$", max_length=18)
+    callSessionId: UUID = Field(strict=False)
+    callerLast4: str = Field(pattern=r"^[0-9]{0,4}$", max_length=4)
+    occurredAt: datetime
+    risk: int = Field(gt=80, le=100)
+    riskLabel: str = Field(min_length=1, max_length=40)
+    summary: str = Field(min_length=1, max_length=360)
+    signals: list[SafetySignal] = Field(max_length=6)
+
+
+class GuardianReportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reportId: UUID
+    status: Literal["delivered", "stored"]
+    message: str = Field(max_length=240)
+
+
+class GuardianReportItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reportId: UUID
+    primaryAlias: str
+    callerLast4: str
+    occurredAt: datetime
+    risk: int = Field(gt=80, le=100)
+    riskLabel: str
+    summary: str
+    signals: list[SafetySignal]
+
+
+class GuardianReportList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reports: list[GuardianReportItem] = Field(max_length=100)

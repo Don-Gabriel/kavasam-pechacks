@@ -18,11 +18,15 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
+| Message, email, URL, QR, screenshot analysis | Working | Explicit upload/paste, Gemini plus deterministic safety checks |
+| Seven-day danger history | Working | Local retention only for AI call scores above 80 |
+| Guardian report inbox | Working | Guardian device claim, 30-day session, SMS alert, seven-day reports |
+| Snowflake analytics | Integrated | Metadata-only, asynchronous, and fail-open; requires valid key-pair configuration |
 | Render deployment | Demo-ready | Free Blueprint included; gateway data is ephemeral |
 | Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture it |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **4.0.0**.
+Current mobile version: **5.0.0**.
 
 ## Features
 
@@ -55,6 +59,16 @@ Current mobile version: **4.0.0**.
 - Optional Gemini second opinion using a redacted structured event
 - Advisory actions rather than irreversible AI decisions
 - No call audio, transcript, or covert Accessibility Service workaround
+- Scores above 80 are labeled **Dangerous**, retained locally for seven days, and pruned automatically
+
+### Content safety center
+
+- Paste SMS/chat/email text for message analysis
+- Upload an email saved as PDF; validated text extraction is limited to 40 pages and 8 MB
+- Inspect direct destinations, known shorteners, public redirect chains, and host changes without allowing private-network requests
+- Choose a QR image; Google ML Kit decodes it locally before URL or payload analysis
+- Upload a screenshot for explicit Gemini multimodal scam analysis
+- Clear risk score, reasons, recommended actions, and analysis-source attribution
 
 ### Guardian approval for suspicious calls
 
@@ -64,6 +78,9 @@ Current mobile version: **4.0.0**.
 - Multiple pending requests require the four-digit reference code
 - Only the local risk summary, selected signal keys, and caller's last four digits are sent
 - The gateway stores a keyed guardian-number token and approval audit state, never the raw number
+- Separate **Guardian** tab for both roles: configure protection on the elderly phone or verify guardian access on the guardian phone
+- AI call scores above 80 create one minimized SMS/report alert and appear in the guardian inbox
+- Guardian sessions last 30 days; danger reports are pruned after seven days
 
 ### Community caller reputation
 
@@ -90,6 +107,7 @@ flowchart LR
     Gateway --> Actian[(Actian VectorAI DB)]
     Gateway --> Reputation[(Tokenized reputation database)]
     Gateway --> N8N[n8n SMS workflow]
+    Gateway -. metadata only .-> Snowflake[(Snowflake analytics)]
     N8N --> Guardian[Verified guardian]
     LocalRisk --> UI[Explainable warning]
     Gemini --> UI
@@ -108,6 +126,9 @@ The native call-screening service never waits for the gateway. Android screening
 | Community report | Phone number, random reporter UUID, category | HMAC number token, HMAC reporter token, category, timestamps |
 | Guardian enrollment | Guardian number, primary user's chosen alias | HMAC guardian-number token, random device/enrollment IDs, state and timestamps |
 | Guardian approval | Guardian number, alias, risk summary, selected signals, caller's last four digits | HMAC number token, random request IDs, decision state and timestamps |
+| Content analysis | Explicit message/QR text, email PDF, URL, or screenshot | No raw request retention |
+| Guardian danger report | Guardian number transiently, alias, risk summary, selected signals, caller's last four digits | HMAC number token and minimized report for seven days |
+| Snowflake analytics | Random event ID and coarse analysis metadata | Type, bounded risk, level, source, vector source, indicator count, timestamp |
 | Contacts | Nothing | Nothing |
 | Call history | Nothing | Nothing |
 | Call audio/transcript | Nothing | Nothing |
@@ -353,8 +374,11 @@ The gateway suite verifies:
 - Confidence growth across independent reporters
 - Neutral results for unknown numbers
 - Guardian number tokenization and explicit SMS opt-in
+- Guardian device claims, danger report delivery, report authentication, and seven-day pruning
 - Approval reply parsing, reference matching, and non-approval of malformed replies
 - Actian collection creation, pattern upsert, vector search, authentication, attribution, and fail-open behavior
+- Message scoring, file-signature validation, URL shortener detection, and private-network URL rejection
+- Snowflake table creation and metadata-only fail-open event writing
 
 ## Security notes
 
@@ -363,7 +387,7 @@ The gateway suite verifies:
 - Cloud endpoints must use HTTPS outside localhost development.
 - The gateway sets `Cache-Control: no-store`, `Pragma: no-cache`, and `X-Content-Type-Options: nosniff`.
 - Gemini output is schema-validated and advisory.
-- AI never contacts a guardian by itself. Only the user's visible **Ask guardian to continue** action starts the fail-closed SMS flow.
+- Guardian communication occurs only after explicit enrollment and opt-in. Approval SMS uses the visible **Ask guardian to continue** action; a danger report uses the visible **Track this call** consent and a score above 80.
 - Automatic screening decisions use deterministic local data only.
 - Production deployments must add authentication/rate limiting before accepting reports from the public internet.
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kavasam_mobile/models/phone.dart';
+import 'package:kavasam_mobile/models/security_analysis.dart';
 
 void main() {
   test('parses an explainable spam identity', () {
@@ -161,5 +162,54 @@ void main() {
     expect(guardian.isVerified, isTrue);
     expect(approval.isApproved, isTrue);
     expect(approval.isDenied, isFalse);
+  });
+
+  test('parses dangerous content and redirect evidence', () {
+    final result = SecurityAnalysis.fromJson({
+      'risk': 92,
+      'level': 'critical',
+      'category': 'Suspicious link',
+      'summary': 'The link hides its destination.',
+      'reasons': ['Known shortener'],
+      'recommendedActions': ['Do not open it'],
+      'indicators': ['url_shortener'],
+      'source': 'rules-fallback',
+      'extractedTextPreview': '',
+      'urlAssessment': {
+        'originalHost': 'tinyurl.com',
+        'finalHost': 'tinyurl.com',
+        'redirectCount': 0,
+        'redirectChain': ['https://tinyurl.com/demo'],
+        'usesShortener': true,
+        'hostChanged': false,
+        'reachable': false,
+      },
+    });
+    expect(result.isDangerous, isTrue);
+    expect(result.urlAssessment?.usesShortener, isTrue);
+  });
+
+  test('parses guardian viewer session and report', () {
+    final viewer = GuardianViewerConfig.fromMap({
+      'guardianId': 'guardian-1',
+      'primaryAlias': 'Amma',
+      'sessionToken': 'token',
+      'expiresAt': DateTime.now()
+          .add(const Duration(days: 1))
+          .millisecondsSinceEpoch,
+    });
+    final report = GuardianReport.fromJson({
+      'reportId': 'report-1',
+      'primaryAlias': 'Amma',
+      'callerLast4': '3210',
+      'occurredAt': '2026-08-30T10:00:00Z',
+      'risk': 91,
+      'riskLabel': 'Dangerous',
+      'summary': 'OTP and payment pressure detected.',
+      'signals': ['otp_pin', 'payment_transfer'],
+    });
+    expect(viewer.isSignedIn, isTrue);
+    expect(report.risk, 91);
+    expect(report.signals, contains('otp_pin'));
   });
 }

@@ -16,8 +16,14 @@ import httpx
 from .schemas import (
     GuardianApprovalRequest,
     GuardianApprovalResponse,
+    GuardianClaimRequest,
+    GuardianClaimResponse,
     GuardianEnrollmentRequest,
     GuardianEnrollmentResponse,
+    GuardianReportItem,
+    GuardianReportList,
+    GuardianReportRequest,
+    GuardianReportResponse,
     GuardianReplyResponse,
 )
 
@@ -97,6 +103,7 @@ class GuardianApprovalStore:
         self._gateway = gateway or GuardianGateway()
         self._approval_ttl = timedelta(seconds=max(60, approval_ttl_seconds))
         self._enrollment_ttl = timedelta(hours=24)
+        self._guardian_session_ttl = timedelta(days=30)
         self._create_schema()
 
     @property
@@ -113,6 +120,7 @@ class GuardianApprovalStore:
                 CREATE TABLE IF NOT EXISTS guardians (
                     id TEXT PRIMARY KEY,
                     device_id TEXT NOT NULL,
+                    primary_alias TEXT NOT NULL DEFAULT 'Protected user',
                     phone_token TEXT NOT NULL,
                     ref_code TEXT NOT NULL,
                     status TEXT NOT NULL,
@@ -136,13 +144,53 @@ class GuardianApprovalStore:
                 );
                 CREATE INDEX IF NOT EXISTS approvals_guardian_status
                     ON guardian_approvals(guardian_id, status);
+                CREATE TABLE IF NOT EXISTS guardian_sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    guardian_id TEXT NOT NULL,
+                    guardian_device_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS guardian_sessions_guardian
+                    ON guardian_sessions(guardian_id, expires_at);
+                CREATE TABLE IF NOT EXISTS guardian_reports (
+                    id TEXT PRIMARY KEY,
+                    guardian_id TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    call_session_id TEXT NOT NULL,
+                    caller_last4 TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    risk INTEGER NOT NULL,
+                    risk_label TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    signals TEXT NOT NULL,
+                    delivery_status TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS guardian_reports_guardian_time
+                    ON guardian_reports(guardian_id, occurred_at DESC);
                 """
             )
+            columns = {
+                row[1] for row in self._connection.execute("PRAGMA table_info(guardians)")
+            }
+            if "primary_alias" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE guardians ADD COLUMN primary_alias TEXT NOT NULL "
+                    "DEFAULT 'Protected user'"
+                )
 
     def _token(self, phone: str) -> str:
         return hmac.new(
             self._secret,
             _normalize_phone(phone).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _session_token(self, value: str) -> str:
+        return hmac.new(
+            self._secret,
+            f"guardian-session:{value}".encode(),
             hashlib.sha256,
         ).hexdigest()
 
@@ -165,10 +213,16 @@ class GuardianApprovalStore:
                 (str(event.deviceId),),
             )
             self._connection.execute(
-                "INSERT INTO guardians VALUES (?, ?, ?, ?, 'pending', ?, ?, NULL)",
+                """
+                INSERT INTO guardians(
+                    id, device_id, primary_alias, phone_token, ref_code, status,
+                    created_at, expires_at, verified_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, NULL)
+                """,
                 (
                     str(enrollment_id),
                     str(event.deviceId),
+                    event.primaryAlias,
                     self._token(event.guardianPhone),
                     ref_code,
                     now.isoformat(),
@@ -183,7 +237,8 @@ class GuardianApprovalStore:
                     "reference": ref_code,
                     "message": (
                         f"Kavasam: {event.primaryAlias} wants you as their call-safety guardian. "
-                        f"Reply JOIN #{ref_code} to opt in. Expires in 24 hours."
+                        f"Reply JOIN #{ref_code} or enter code {ref_code} in the Kavasam "
+                        "Guardian tab to opt in. Expires in 24 hours."
                     ),
                 }
             )
@@ -200,6 +255,171 @@ class GuardianApprovalStore:
             expiresAt=expires,
             delivery="n8n",
             message="Opt-in sent. Ask your guardian to reply JOIN with the reference code.",
+        )
+
+    def claim_relationship(self, event: GuardianClaimRequest) -> GuardianClaimResponse:
+        now = _utc_now()
+        expires = now + self._guardian_session_ttl
+        phone_token = self._token(event.guardianPhone)
+        raw_token = secrets.token_urlsafe(36)
+        with self._lock, self._connection:
+            self._expire(now)
+            rows = self._connection.execute(
+                """
+                SELECT * FROM guardians
+                WHERE phone_token = ? AND ref_code = ?
+                  AND status IN ('pending', 'verified')
+                ORDER BY created_at DESC
+                """,
+                (phone_token, event.referenceCode),
+            ).fetchall()
+            if len(rows) != 1:
+                raise PermissionError("The guardian phone and reference code did not match.")
+            guardian = rows[0]
+            if guardian["status"] == "pending":
+                self._connection.execute(
+                    "UPDATE guardians SET status = 'verified', verified_at = ? WHERE id = ?",
+                    (now.isoformat(), guardian["id"]),
+                )
+            self._connection.execute(
+                "DELETE FROM guardian_sessions WHERE guardian_device_id = ?",
+                (str(event.guardianDeviceId),),
+            )
+            self._connection.execute(
+                "INSERT INTO guardian_sessions VALUES (?, ?, ?, ?, ?)",
+                (
+                    self._session_token(raw_token),
+                    guardian["id"],
+                    str(event.guardianDeviceId),
+                    now.isoformat(),
+                    expires.isoformat(),
+                ),
+            )
+        return GuardianClaimResponse(
+            guardianId=UUID(guardian["id"]),
+            sessionToken=raw_token,
+            primaryAlias=guardian["primary_alias"],
+            expiresAt=expires,
+            message=(
+                f"Guardian relationship activated for {guardian['primary_alias']}. "
+                "Dangerous-call reports will appear in this tab."
+            ),
+        )
+
+    def submit_report(self, event: GuardianReportRequest) -> GuardianReportResponse:
+        now = _utc_now()
+        with self._lock, self._connection:
+            guardian = self._connection.execute(
+                """
+                SELECT * FROM guardians
+                WHERE id = ? AND device_id = ? AND status = 'verified'
+                """,
+                (str(event.guardianId), str(event.deviceId)),
+            ).fetchone()
+            if guardian is None or not hmac.compare_digest(
+                guardian["phone_token"], self._token(event.guardianPhone)
+            ):
+                raise PermissionError("Guardian is not verified for this device.")
+            existing = self._connection.execute(
+                "SELECT delivery_status FROM guardian_reports WHERE id = ?",
+                (str(event.reportId),),
+            ).fetchone()
+            if existing is None:
+                self._connection.execute(
+                    """
+                    INSERT INTO guardian_reports VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stored', ?
+                    )
+                    """,
+                    (
+                        str(event.reportId),
+                        str(event.guardianId),
+                        str(event.deviceId),
+                        str(event.callSessionId),
+                        event.callerLast4,
+                        event.occurredAt.isoformat(),
+                        event.risk,
+                        event.riskLabel,
+                        event.summary,
+                        ",".join(event.signals),
+                        now.isoformat(),
+                    ),
+                )
+            elif existing["delivery_status"] == "delivered":
+                return GuardianReportResponse(
+                    reportId=event.reportId,
+                    status="delivered",
+                    message="The dangerous-call report was already delivered.",
+                )
+        last_digits = f" ending {event.callerLast4}" if event.callerLast4 else ""
+        try:
+            self._gateway.send(
+                {
+                    "event": "guardian_report",
+                    "to": _normalize_phone(event.guardianPhone),
+                    "reference": str(event.reportId),
+                    "message": (
+                        f"Kavasam danger report for {guardian['primary_alias']}: a call"
+                        f"{last_digits} scored {event.risk}/100 ({event.riskLabel}). "
+                        "Open the Kavasam Guardian tab for the redacted analysis."
+                    ),
+                }
+            )
+        except Exception:
+            return GuardianReportResponse(
+                reportId=event.reportId,
+                status="stored",
+                message="Report stored for the guardian; SMS delivery will be retried later.",
+            )
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE guardian_reports SET delivery_status = 'delivered' WHERE id = ?",
+                (str(event.reportId),),
+            )
+        return GuardianReportResponse(
+            reportId=event.reportId,
+            status="delivered",
+            message="Dangerous-call report stored and sent to the guardian by SMS.",
+        )
+
+    def reports(self, session_token: str) -> GuardianReportList:
+        now = _utc_now()
+        with self._lock, self._connection:
+            self._expire(now)
+            session = self._connection.execute(
+                """
+                SELECT * FROM guardian_sessions
+                WHERE token_hash = ? AND expires_at > ?
+                """,
+                (self._session_token(session_token), now.isoformat()),
+            ).fetchone()
+            if session is None:
+                raise PermissionError("Guardian session is invalid or expired.")
+            rows = self._connection.execute(
+                """
+                SELECT r.*, g.primary_alias
+                FROM guardian_reports r
+                JOIN guardians g ON g.id = r.guardian_id
+                WHERE r.guardian_id = ?
+                ORDER BY r.occurred_at DESC
+                LIMIT 100
+                """,
+                (session["guardian_id"],),
+            ).fetchall()
+        return GuardianReportList(
+            reports=[
+                GuardianReportItem(
+                    reportId=UUID(row["id"]),
+                    primaryAlias=row["primary_alias"],
+                    callerLast4=row["caller_last4"],
+                    occurredAt=datetime.fromisoformat(row["occurred_at"]),
+                    risk=row["risk"],
+                    riskLabel=row["risk_label"],
+                    summary=row["summary"],
+                    signals=[value for value in row["signals"].split(",") if value],
+                )
+                for row in rows
+            ]
         )
 
     def enrollment_status(
@@ -398,6 +618,7 @@ class GuardianApprovalStore:
 
     def _expire(self, now: datetime) -> None:
         stamp = now.isoformat()
+        report_cutoff = (now - timedelta(days=7)).isoformat()
         self._connection.execute(
             "UPDATE guardians SET status = 'expired' WHERE status = 'pending' AND expires_at <= ?",
             (stamp,),
@@ -406,4 +627,12 @@ class GuardianApprovalStore:
             "UPDATE guardian_approvals SET status = 'expired' "
             "WHERE status = 'pending' AND expires_at <= ?",
             (stamp,),
+        )
+        self._connection.execute(
+            "DELETE FROM guardian_sessions WHERE expires_at <= ?",
+            (stamp,),
+        )
+        self._connection.execute(
+            "DELETE FROM guardian_reports WHERE occurred_at < ?",
+            (report_cutoff,),
         )

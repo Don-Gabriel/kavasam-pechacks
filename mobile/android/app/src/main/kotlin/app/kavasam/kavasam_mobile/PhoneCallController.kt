@@ -3,6 +3,7 @@ package app.kavasam.kavasam_mobile
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.telecom.Call
 import android.telecom.VideoProfile
 import io.flutter.plugin.common.EventChannel
@@ -15,6 +16,7 @@ object PhoneCallController {
     private const val MAX_HISTORY = 30
 
     private var service: KavasamInCallService? = null
+    private var appContext: Context? = null
     private var call: Call? = null
     private var number = "Unknown number"
     private var direction = "outgoing"
@@ -24,7 +26,10 @@ object PhoneCallController {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val callCallback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) = emitSnapshot()
-        override fun onDetailsChanged(call: Call, details: Call.Details) = emitSnapshot()
+        override fun onDetailsChanged(call: Call, details: Call.Details) {
+            refreshDetails(call, details)
+            emitSnapshot()
+        }
     }
 
     @Synchronized
@@ -46,10 +51,11 @@ object PhoneCallController {
     @Synchronized
     fun onCallAdded(context: Context, value: Call) {
         call?.unregisterCallback(callCallback)
+        appContext = context.applicationContext
         call = value
         value.registerCallback(callCallback, mainHandler)
         number = value.details.handle?.schemeSpecificPart ?: "Unknown number"
-        direction = if (value.state == Call.STATE_RINGING) "incoming" else "outgoing"
+        direction = callDirection(value.details, value.state)
         startedAt = System.currentTimeMillis()
         identity = CallerIdentityStore.assess(context, number, direction)
         CallSafetyTracker.onCallStarted(context, number)
@@ -71,11 +77,39 @@ object PhoneCallController {
         CallSafetyTracker.finishCall(context)
         value.unregisterCallback(callCallback)
         call = null
+        appContext = null
         identity = null
         emitSnapshot()
     }
 
     fun onAudioStateChanged() = emitSnapshot()
+
+    @Synchronized
+    private fun refreshDetails(value: Call, details: Call.Details) {
+        if (call !== value) return
+        val updatedDirection = callDirection(details, value.state)
+        val updatedNumber = details.handle?.schemeSpecificPart ?: number
+        if (updatedNumber != number || updatedDirection != direction) {
+            number = updatedNumber
+            direction = updatedDirection
+            appContext?.let { context ->
+                identity = CallerIdentityStore.assess(context, number, direction)
+            }
+        }
+    }
+
+    private fun callDirection(details: Call.Details, state: Int): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            when (details.callDirection) {
+                Call.Details.DIRECTION_INCOMING -> "incoming"
+                Call.Details.DIRECTION_OUTGOING -> "outgoing"
+                else -> if (state == Call.STATE_RINGING) "incoming" else "outgoing"
+            }
+        } else if (state == Call.STATE_RINGING) {
+            "incoming"
+        } else {
+            "outgoing"
+        }
 
     @Synchronized
     fun snapshot(): Map<String, Any?>? {

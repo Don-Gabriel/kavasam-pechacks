@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/models/phone.dart';
+import 'package:kavasam_mobile/screens/guardian_screen.dart';
+import 'package:kavasam_mobile/screens/security_analysis_screen.dart';
 import 'package:kavasam_mobile/services/cloud_safety_service.dart';
 import 'package:kavasam_mobile/services/phone_bridge.dart';
 
@@ -728,7 +730,17 @@ class _CallerScreenState extends State<CallerScreen>
                   _dialerPage(),
                   _recentsPage(),
                   _contactsPage(),
-                  _insightsPage(),
+                  _safetyPage(),
+                  GuardianScreen(
+                    service: _cloudSafety,
+                    bridge: widget.bridge,
+                    deviceId: _reporterId,
+                    protectedUserConfig: _guardian,
+                    busy: _guardianBusy,
+                    onSetup: _setupGuardian,
+                    onRefresh: _checkGuardian,
+                    onRemove: _removeGuardian,
+                  ),
                 ],
               ),
       ),
@@ -750,8 +762,12 @@ class _CallerScreenState extends State<CallerScreen>
                   label: 'Contacts',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.shield_rounded),
-                  label: 'Insights',
+                  icon: Icon(Icons.manage_search_rounded),
+                  label: 'Safety',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.family_restroom_rounded),
+                  label: 'Guardian',
                 ),
               ],
             )
@@ -836,6 +852,34 @@ class _CallerScreenState extends State<CallerScreen>
         ),
       ],
     ],
+  );
+
+  Widget _safetyPage() => DefaultTabController(
+    length: 2,
+    child: Column(
+      children: [
+        const Material(
+          color: Colors.white,
+          child: TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.manage_search_rounded), text: 'Analyze'),
+              Tab(icon: Icon(Icons.shield_rounded), text: 'Protection'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              SecurityAnalysisScreen(
+                service: _cloudSafety,
+                cloudConsent: _cloudConsent,
+              ),
+              _insightsPage(),
+            ],
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _recentsPage() => RefreshIndicator(
@@ -1794,8 +1838,11 @@ class _ActiveCall extends StatelessWidget {
               const SizedBox(height: 12),
               _CloudAssessmentPanel(
                 call: call,
+                bridge: bridge,
                 service: cloudSafety,
                 consent: cloudConsent,
+                guardian: guardian,
+                deviceId: deviceId,
               ),
               if (call.trackingRiskScore >= 45) ...[
                 const SizedBox(height: 12),
@@ -2377,13 +2424,19 @@ class _GuardianApprovalPanelState extends State<_GuardianApprovalPanel> {
 class _CloudAssessmentPanel extends StatefulWidget {
   const _CloudAssessmentPanel({
     required this.call,
+    required this.bridge,
     required this.service,
     required this.consent,
+    required this.guardian,
+    required this.deviceId,
   });
 
   final PhoneCallSnapshot call;
+  final PhoneBridge bridge;
   final CloudSafetyService service;
   final bool consent;
+  final GuardianConfig guardian;
+  final String deviceId;
 
   @override
   State<_CloudAssessmentPanel> createState() => _CloudAssessmentPanelState();
@@ -2394,6 +2447,9 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
   CloudSafetyAssessment? _assessment;
   String? _error;
   String? _lastSignature;
+  final String _reportId = CloudSafetyService.newSessionId();
+  bool _dangerReported = false;
+  String? _deliveryNote;
   bool _loading = false;
 
   @override
@@ -2433,6 +2489,35 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
         sessionId: _sessionId,
         call: widget.call,
       );
+      if (assessment.risk > 80 && !_dangerReported) {
+        _dangerReported = true;
+        await widget.bridge.saveHighRiskAnalysis(
+          reportId: _reportId,
+          callSessionId: _sessionId,
+          call: widget.call,
+          assessment: assessment,
+        );
+        if (widget.guardian.isVerified) {
+          try {
+            final status = await widget.service.submitGuardianReport(
+              reportId: _reportId,
+              deviceId: widget.deviceId,
+              guardian: widget.guardian,
+              callSessionId: _sessionId,
+              call: widget.call,
+              assessment: assessment,
+            );
+            _deliveryNote = status == 'delivered'
+                ? 'Guardian alerted by SMS.'
+                : 'Guardian report stored; SMS delivery is pending.';
+          } on Object catch (_) {
+            _deliveryNote =
+                'Danger report saved locally. Guardian delivery is unavailable.';
+          }
+        } else {
+          _deliveryNote = 'Danger report saved locally for 7 days.';
+        }
+      }
       if (!mounted) return;
       setState(() => _assessment = assessment);
     } on Object catch (error) {
@@ -2549,6 +2634,17 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
             'AI: ${assessment.source} · vectors: ${assessment.vectorDatabase} · advisory only · no phone number or audio sent',
             style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
+          if (_deliveryNote != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              _deliveryNote!,
+              style: const TextStyle(
+                color: Color(0xFFFFDAD6),
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+              ),
+            ),
+          ],
           if (_error != null)
             TextButton(onPressed: _analyze, child: const Text('Retry update')),
         ],

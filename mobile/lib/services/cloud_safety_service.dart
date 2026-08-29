@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:kavasam_mobile/models/phone.dart';
+import 'package:kavasam_mobile/models/security_analysis.dart';
 
 class CloudSafetyException implements Exception {
   const CloudSafetyException(this.message);
@@ -69,6 +70,56 @@ class CloudSafetyService {
     return CloudSafetyAssessment.fromJson(value);
   }
 
+  Future<SecurityAnalysis> analyzeContent({
+    required String kind,
+    required String text,
+    String locale = 'en-IN',
+  }) async {
+    final value = await _postJson('/v1/content/analyze', {
+      'schemaVersion': 1,
+      'sessionId': newSessionId(),
+      'kind': kind,
+      'text': text.trim(),
+      'locale': locale,
+    });
+    return SecurityAnalysis.fromJson(value);
+  }
+
+  Future<SecurityAnalysis> analyzeUrl(
+    String url, {
+    String locale = 'en-IN',
+  }) async {
+    final value = await _postJson('/v1/content/analyze-url', {
+      'schemaVersion': 1,
+      'sessionId': newSessionId(),
+      'url': url.trim(),
+      'locale': locale,
+    });
+    return SecurityAnalysis.fromJson(value);
+  }
+
+  Future<SecurityAnalysis> analyzeFile({
+    required String kind,
+    required String fileName,
+    required String mimeType,
+    required List<int> bytes,
+    String locale = 'en-IN',
+  }) async {
+    if (bytes.length > 8 * 1024 * 1024) {
+      throw const CloudSafetyException('Choose a file smaller than 8 MB.');
+    }
+    final value = await _postJson('/v1/content/analyze-file', {
+      'schemaVersion': 1,
+      'sessionId': newSessionId(),
+      'kind': kind,
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'dataBase64': base64Encode(bytes),
+      'locale': locale,
+    });
+    return SecurityAnalysis.fromJson(value);
+  }
+
   Future<GuardianEnrollment> enrollGuardian({
     required String deviceId,
     required String guardianPhone,
@@ -127,16 +178,72 @@ class CloudSafetyService {
     return GuardianApproval.fromJson(value);
   }
 
+  Future<GuardianClaim> claimGuardianRelationship({
+    required String guardianPhone,
+    required String referenceCode,
+    required String guardianDeviceId,
+  }) async {
+    final value = await _postJson('/v1/guardian/claims', {
+      'guardianPhone': _networkNumber(guardianPhone),
+      'referenceCode': referenceCode.trim(),
+      'guardianDeviceId': guardianDeviceId,
+    });
+    return GuardianClaim.fromJson(value);
+  }
+
+  Future<String> submitGuardianReport({
+    required String reportId,
+    required String deviceId,
+    required GuardianConfig guardian,
+    required String callSessionId,
+    required PhoneCallSnapshot call,
+    required CloudSafetyAssessment assessment,
+  }) async {
+    final digits = call.number.replaceAll(RegExp(r'[^0-9]'), '');
+    final value = await _postJson('/v1/guardian/reports', {
+      'reportId': reportId,
+      'deviceId': deviceId,
+      'guardianId': guardian.guardianId,
+      'guardianPhone': _networkNumber(guardian.guardianPhone),
+      'callSessionId': callSessionId,
+      'callerLast4': digits.length <= 4
+          ? digits
+          : digits.substring(digits.length - 4),
+      'occurredAt': DateTime.now().toUtc().toIso8601String(),
+      'risk': assessment.risk,
+      'riskLabel': assessment.risk > 80 ? 'Dangerous' : assessment.level,
+      'summary': assessment.warningText,
+      'signals': call.trackingSignals,
+    });
+    return value['status']?.toString() ?? 'stored';
+  }
+
+  Future<List<GuardianReport>> guardianReports(String sessionToken) async {
+    final value = await _getJson(
+      '/v1/guardian/reports',
+      const {},
+      headers: {'authorization': 'Bearer $sessionToken'},
+    );
+    return (value['reports'] as List<Object?>? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => GuardianReport.fromJson(Map<Object?, Object?>.from(item)),
+        )
+        .toList();
+  }
+
   Future<Map<String, Object?>> _getJson(
     String path,
-    Map<String, String> query,
-  ) async {
+    Map<String, String> query, {
+    Map<String, String> headers = const {},
+  }) async {
     final base = _validatedBase();
     final uri = base.resolve(path).replace(queryParameters: query);
     final request = await _client
         .getUrl(uri)
         .timeout(const Duration(seconds: 8));
     request.headers.set('accept', 'application/json');
+    headers.forEach(request.headers.set);
     return _readJson(
       await request.close().timeout(const Duration(seconds: 15)),
     );

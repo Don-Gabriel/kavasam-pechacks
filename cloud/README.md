@@ -6,6 +6,8 @@ When `GEMINI_API_KEY` is set, `/v1/safety/analyze` uses Gemini structured JSON o
 
 When `ACTIAN_VECTORAI_URL` is set, every accepted safety request also performs nearest-neighbor retrieval against the configured Actian scam-pattern collection. The response and health endpoint state whether Actian was used, unavailable, or not configured. See [the Actian setup guide](../docs/ACTIAN_VECTORAI_SETUP.md).
 
+Message, email-PDF, link, QR-payload, and screenshot analysis use strict request schemas. PDF text is extracted in memory, screenshot bytes are sent only for the explicit request, URL checks reject local/private destinations and detect shorteners and redirect changes, and raw content is not retained. When Snowflake key-pair credentials are valid, the gateway writes only aggregate event metadata—analysis type, risk, level, source, vector source, and indicator count. Raw content and identifiers are excluded.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -22,12 +24,18 @@ Endpoints:
 
 - `GET /health`
 - `POST /v1/safety/analyze`
+- `POST /v1/content/analyze`
+- `POST /v1/content/analyze-file`
+- `POST /v1/content/analyze-url`
 - `POST /v1/reputation/lookup`
 - `POST /v1/reputation/report`
 - `POST /v1/guardian/enrollments`
 - `GET /v1/guardian/enrollments/{id}?deviceId=...`
 - `POST /v1/guardian/approvals`
 - `GET /v1/guardian/approvals/{id}?deviceId=...`
+- `POST /v1/guardian/claims`
+- `POST /v1/guardian/reports` (danger scores above 80 only)
+- `GET /v1/guardian/reports` (guardian bearer session)
 - `POST /v1/guardian/reply` (authenticated n8n callback)
 - `GET /docs` for the generated OpenAPI explorer
 

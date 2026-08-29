@@ -16,7 +16,10 @@ object CallSafetyTracker {
     private const val PREFS = "kavasam_call_safety"
     private const val ACTIVE = "active_session"
     private const val HISTORY = "session_history"
+    private const val HIGH_RISK_HISTORY = "high_risk_analysis_history"
     private const val MAX_HISTORY = 30
+    private const val MAX_HIGH_RISK_HISTORY = 100
+    private const val HIGH_RISK_RETENTION_MS = 7L * 24L * 60L * 60L * 1000L
 
     private val definitions = linkedMapOf(
         "otp_pin" to SafetySignal(
@@ -162,7 +165,83 @@ object CallSafetyTracker {
         return mapOf(
             "trackedCalls" to history.length(),
             "suspiciousTrackedCalls" to suspicious,
+            "dangerousAnalysesStored" to highRiskAnalyses(context).size,
         )
+    }
+
+    @Synchronized
+    fun saveHighRiskAnalysis(context: Context, value: Map<String, Any?>): Boolean {
+        val risk = (value["risk"] as? Number)?.toInt() ?: return false
+        if (risk <= 80) return false
+        val now = System.currentTimeMillis()
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val existing = retainedHighRiskArray(preferences.getString(HIGH_RISK_HISTORY, "[]"), now)
+        val reportId = value["reportId"]?.toString().orEmpty()
+        val updated = JSONArray()
+        if ((0 until existing.length()).none {
+                existing.optJSONObject(it)?.optString("reportId") == reportId
+            }) {
+            updated.put(
+                JSONObject()
+                    .put("reportId", reportId)
+                    .put("callSessionId", value["callSessionId"]?.toString().orEmpty())
+                    .put("number", value["number"]?.toString().orEmpty())
+                    .put("displayName", value["displayName"]?.toString().orEmpty())
+                    .put("occurredAt", (value["occurredAt"] as? Number)?.toLong() ?: now)
+                    .put("risk", risk.coerceIn(81, 100))
+                    .put("riskLabel", value["riskLabel"]?.toString().orEmpty())
+                    .put("summary", value["summary"]?.toString().orEmpty().take(360))
+                    .put("source", value["source"]?.toString().orEmpty())
+                    .put("vectorDatabase", value["vectorDatabase"]?.toString().orEmpty())
+                    .put("signals", JSONArray((value["signals"] as? List<*>) ?: emptyList<Any>()))
+                    .put("expiresAt", now + HIGH_RISK_RETENTION_MS),
+            )
+        }
+        for (index in 0 until minOf(existing.length(), MAX_HIGH_RISK_HISTORY - updated.length())) {
+            updated.put(existing.get(index))
+        }
+        preferences.edit().putString(HIGH_RISK_HISTORY, updated.toString()).apply()
+        return true
+    }
+
+    @Synchronized
+    fun highRiskAnalyses(context: Context): List<Map<String, Any>> {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val retained = retainedHighRiskArray(
+            preferences.getString(HIGH_RISK_HISTORY, "[]"),
+            System.currentTimeMillis(),
+        )
+        preferences.edit().putString(HIGH_RISK_HISTORY, retained.toString()).apply()
+        return (0 until retained.length()).mapNotNull { index ->
+            retained.optJSONObject(index)?.let { item ->
+                mapOf(
+                    "reportId" to item.optString("reportId"),
+                    "callSessionId" to item.optString("callSessionId"),
+                    "number" to item.optString("number"),
+                    "displayName" to item.optString("displayName"),
+                    "occurredAt" to item.optLong("occurredAt"),
+                    "risk" to item.optInt("risk"),
+                    "riskLabel" to item.optString("riskLabel"),
+                    "summary" to item.optString("summary"),
+                    "source" to item.optString("source"),
+                    "vectorDatabase" to item.optString("vectorDatabase"),
+                    "signals" to item.optJSONArray("signals").toStringList(),
+                    "expiresAt" to item.optLong("expiresAt"),
+                )
+            }
+        }
+    }
+
+    private fun retainedHighRiskArray(raw: String?, now: Long): JSONArray {
+        val source = runCatching { JSONArray(raw ?: "[]") }.getOrDefault(JSONArray())
+        val retained = JSONArray()
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            if (item.optInt("risk", 0) > 80 && item.optLong("expiresAt", 0L) > now) {
+                retained.put(item)
+            }
+        }
+        return retained
     }
 
     private fun finish(context: Context, status: String) {
@@ -218,6 +297,7 @@ object CallSafetyTracker {
     }
 
     private fun riskLabel(score: Int): String = when {
+        score > 80 -> "Dangerous"
         score >= 75 -> "High scam risk"
         score >= 50 -> "Suspicious"
         score >= 25 -> "Use caution"
@@ -245,5 +325,10 @@ object CallSafetyTracker {
         }
         if (observedLength == 0.0) return 0.0
         return (dot / (sqrt(observedLength) * sqrt(prototypeLength))).coerceIn(0.0, 1.0)
+    }
+
+    private fun JSONArray?.toStringList(): List<String> {
+        if (this == null) return emptyList()
+        return (0 until length()).map { index -> optString(index) }
     }
 }

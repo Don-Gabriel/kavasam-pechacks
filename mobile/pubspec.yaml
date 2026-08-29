@@ -1,7 +1,7 @@
 name: kavasam_mobile
 description: "An offline-first Android caller ID and spam protection phone app."
 publish_to: "none"
-version: 4.0.0+7
+version: 5.0.0+8
 
 environment:
   sdk: ^3.12.1
@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  file_picker: ^10.3.3
+  google_mlkit_barcode_scanning: ^0.14.1
 
 dev_dependencies:
   flutter_test:

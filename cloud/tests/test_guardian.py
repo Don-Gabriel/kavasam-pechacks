@@ -1,7 +1,13 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.guardian import GuardianApprovalStore
-from app.schemas import GuardianApprovalRequest, GuardianEnrollmentRequest
+from app.schemas import (
+    GuardianApprovalRequest,
+    GuardianClaimRequest,
+    GuardianEnrollmentRequest,
+    GuardianReportRequest,
+)
 
 
 class FakeGateway:
@@ -88,3 +94,61 @@ def test_unrecognized_reply_does_not_approve() -> None:
     assert reply.status == "unrecognized"
     assert store.approval_status(approval.requestId, device_id).status == "pending"
     store.close()
+
+
+def test_guardian_can_claim_relationship_and_read_danger_reports() -> None:
+    store, gateway, device_id, guardian_id, phone = _verified_guardian()
+    reference = gateway.messages[0]["reference"]
+    claim = store.claim_relationship(
+        GuardianClaimRequest(
+            guardianPhone=phone,
+            referenceCode=reference,
+            guardianDeviceId=uuid4(),
+        )
+    )
+    assert claim.guardianId == guardian_id
+    assert claim.primaryAlias == "Amma"
+
+    report = store.submit_report(
+        GuardianReportRequest(
+            reportId=uuid4(),
+            deviceId=device_id,
+            guardianId=guardian_id,
+            guardianPhone=phone,
+            callSessionId=uuid4(),
+            callerLast4="3210",
+            occurredAt=datetime(2026, 8, 30, 10, tzinfo=timezone.utc),
+            risk=91,
+            riskLabel="Dangerous",
+            summary="Caller requested an OTP and immediate bank transfer.",
+            signals=["otp_pin", "payment_transfer"],
+        )
+    )
+    assert report.status == "delivered"
+    assert gateway.messages[-1]["event"] == "guardian_report"
+
+    reports = store.reports(claim.sessionToken)
+    assert len(reports.reports) == 1
+    assert reports.reports[0].risk == 91
+    assert reports.reports[0].callerLast4 == "3210"
+    assert phone not in " ".join(store._connection.iterdump())
+    store.close()
+
+
+def test_danger_report_threshold_is_enforced_by_schema() -> None:
+    try:
+        GuardianReportRequest(
+            reportId=uuid4(),
+            deviceId=uuid4(),
+            guardianId=uuid4(),
+            guardianPhone="+919876543210",
+            callSessionId=uuid4(),
+            occurredAt=datetime(2026, 8, 30, 10, tzinfo=timezone.utc),
+            risk=80,
+            riskLabel="High",
+            summary="Below the guardian reporting threshold.",
+            signals=[],
+        )
+    except ValueError:
+        return
+    raise AssertionError("risk 80 must not be accepted as a dangerous report")

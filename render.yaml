@@ -25,5 +25,23 @@ services:
         sync: false
       - key: N8N_WEBHOOK_SECRET
         sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: SNOWFLAKE_ACCOUNT
+        sync: false
+      - key: SNOWFLAKE_USER
+        sync: false
+      - key: SNOWFLAKE_WAREHOUSE
+        sync: false
+      - key: SNOWFLAKE_DATABASE
+        sync: false
+      - key: SNOWFLAKE_SCHEMA
+        sync: false
+      - key: SNOWFLAKE_ROLE
+        sync: false
+      - key: SNOWFLAKE_PRIVATE_KEY_B64
+        sync: false
+      - key: SNOWFLAKE_PRIVATE_KEY_PASSPHRASE
+        sync: false
       - key: KAVASAM_DB_PATH
         value: /tmp/kavasam.db

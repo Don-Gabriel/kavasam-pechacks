@@ -13,7 +13,8 @@ void main() {
     expect(find.text('Dial'), findsOneWidget);
     expect(find.text('Recents'), findsOneWidget);
     expect(find.text('Contacts'), findsOneWidget);
-    expect(find.text('Insights'), findsOneWidget);
+    expect(find.text('Safety'), findsOneWidget);
+    expect(find.text('Guardian'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
   });
 
