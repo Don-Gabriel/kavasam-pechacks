@@ -58,8 +58,8 @@ def fallback_analysis(event: SafetyAnalysisRequest) -> SafetyAnalysisResponse:
 class GeminiAnalyzer:
     def __init__(self) -> None:
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        model = os.getenv("GEMINI_MODEL", "gemini-3.7-flash").strip()
-        self.model = model if re.fullmatch(r"[A-Za-z0-9._-]+", model) else "gemini-3.7-flash"
+        model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
+        self.model = model if re.fullmatch(r"[A-Za-z0-9._-]+", model) else "gemini-3.5-flash"
 
     @property
     def configured(self) -> bool:

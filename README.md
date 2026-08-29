@@ -206,7 +206,7 @@ python -m venv .venv
 
 # Optional. Set this only in the gateway process or deployment secrets.
 $env:GEMINI_API_KEY='your-private-server-key'
-$env:GEMINI_MODEL='gemini-3.7-flash'
+$env:GEMINI_MODEL='gemini-3.5-flash'
 $env:NUMBER_HMAC_SECRET='a-long-random-production-secret'
 $env:KAVASAM_DB_PATH='data/kavasam.db'
 $env:ACTIAN_VECTORAI_URL='http://127.0.0.1:6573'
