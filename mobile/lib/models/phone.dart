@@ -506,6 +506,56 @@ class CommunityReputation {
       );
 }
 
+/// State of this phone's device-to-device guardian pairing code.
+class PairingStatus {
+  const PairingStatus({
+    this.status = 'none',
+    this.code = '',
+    this.guardianAlias = '',
+    this.message = '',
+  });
+
+  final String status; // none | open | linked
+  final String code;
+  final String guardianAlias;
+  final String message;
+
+  bool get hasCode => code.isNotEmpty;
+  bool get isLinked => status == 'linked';
+
+  factory PairingStatus.fromJson(Map<Object?, Object?> value) => PairingStatus(
+    status: value['status']?.toString() ?? 'none',
+    code: value['code']?.toString() ?? '',
+    guardianAlias: value['guardianAlias']?.toString() ?? '',
+    message: value['message']?.toString() ?? '',
+  );
+}
+
+/// Result of a guardian linking to a protected phone with its code.
+class PairingClaim {
+  const PairingClaim({
+    required this.pairingId,
+    required this.sessionToken,
+    required this.elderlyAlias,
+    required this.expiresAt,
+    required this.message,
+  });
+
+  final String pairingId;
+  final String sessionToken;
+  final String elderlyAlias;
+  final DateTime? expiresAt;
+  final String message;
+
+  factory PairingClaim.fromJson(Map<String, Object?> value) => PairingClaim(
+    pairingId: value['pairingId']?.toString() ?? '',
+    sessionToken: value['sessionToken']?.toString() ?? '',
+    elderlyAlias: value['elderlyAlias']?.toString() ?? '',
+    expiresAt: DateTime.tryParse(value['expiresAt']?.toString() ?? ''),
+    message: value['message']?.toString() ?? '',
+  );
+}
+
 class GuardianConfig {
   const GuardianConfig({
     this.primaryAlias = '',

@@ -6,3 +6,4 @@ pytest==8.4.1
 python-dotenv==1.2.3
 pypdf==6.0.0
 snowflake-connector-python==3.17.2
+pymongo[srv]==4.9.2

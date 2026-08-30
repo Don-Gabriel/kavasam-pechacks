@@ -80,6 +80,7 @@ class HealthResponse(BaseModel):
         "not-configured", "not-checked", "ready", "unavailable"
     ] = "not-configured"
     voiceConfigured: bool = False
+    pairingConfigured: bool = False
 
 
 ContentKind = Literal["message", "qr"]
@@ -339,4 +340,65 @@ class GuardianReportItem(BaseModel):
 class GuardianReportList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    reports: list[GuardianReportItem] = Field(max_length=100)
+
+
+class PairingCodeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    elderlyDeviceId: UUID = Field(strict=False)
+    alias: str = Field(min_length=1, max_length=48)
+
+
+class PairingStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["none", "open", "linked"]
+    code: str = Field(max_length=12)
+    guardianAlias: str = Field(default="", max_length=48)
+    message: str = Field(default="", max_length=160)
+
+
+class PairingClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    code: str = Field(min_length=4, max_length=12)
+    guardianDeviceId: UUID = Field(strict=False)
+    guardianAlias: str = Field(min_length=1, max_length=48)
+    alertHandle: str = Field(default="", max_length=120)
+
+
+class PairingClaimResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pairingId: str = Field(max_length=64)
+    sessionToken: str = Field(min_length=16, max_length=128)
+    elderlyAlias: str = Field(max_length=48)
+    expiresAt: datetime
+    message: str = Field(max_length=160)
+
+
+class PairingReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    elderlyDeviceId: UUID = Field(strict=False)
+    reportId: UUID = Field(strict=False)
+    callerLast4: str = Field(pattern=r"^[0-9]{0,4}$", max_length=4)
+    risk: int = Field(gt=80, le=100)
+    riskLabel: str = Field(min_length=1, max_length=40)
+    summary: str = Field(min_length=1, max_length=360)
+    signals: list[SafetySignal] = Field(max_length=6)
+
+
+class PairingReportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reportId: UUID
+    status: Literal["delivered", "pending", "stored", "duplicate", "skipped"]
+
+
+class PairingReportList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    elderlyAlias: str = Field(default="", max_length=48)
     reports: list[GuardianReportItem] = Field(max_length=100)

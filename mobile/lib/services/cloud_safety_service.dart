@@ -240,6 +240,80 @@ class CloudSafetyService {
         .toString();
   }
 
+  // -- Device-to-device guardian pairing --------------------------------
+
+  /// Generates or fetches this protected phone's guardian pairing code.
+  Future<PairingStatus> pairingCode(String deviceId, String alias) async {
+    final value = await _postJson('/v1/pair/code', {
+      'elderlyDeviceId': deviceId,
+      'alias': alias,
+    });
+    return PairingStatus.fromJson(value);
+  }
+
+  Future<PairingStatus> pairingStatus(String deviceId) async {
+    final value = await _getJson('/v1/pair/status', {'elderlyDeviceId': deviceId});
+    return PairingStatus.fromJson(value);
+  }
+
+  Future<PairingStatus> pairingUnlink(String deviceId) async {
+    final value = await _postJson('/v1/pair/unlink', {
+      'elderlyDeviceId': deviceId,
+      'alias': 'Protected user',
+    });
+    return PairingStatus.fromJson(value);
+  }
+
+  /// Links a guardian phone to a protected phone using its code.
+  Future<PairingClaim> pairingClaim({
+    required String code,
+    required String guardianDeviceId,
+    required String guardianAlias,
+    String alertHandle = '',
+  }) async {
+    final value = await _postJson('/v1/pair/claim', {
+      'code': code.trim().toUpperCase(),
+      'guardianDeviceId': guardianDeviceId,
+      'guardianAlias': guardianAlias,
+      'alertHandle': alertHandle,
+    });
+    return PairingClaim.fromJson(value);
+  }
+
+  Future<List<GuardianReport>> pairingReports(String sessionToken) async {
+    final value = await _getJson(
+      '/v1/pair/reports',
+      const {},
+      headers: {'authorization': 'Bearer $sessionToken'},
+    );
+    return (value['reports'] as List<Object?>? ?? const [])
+        .whereType<Map>()
+        .map((item) => GuardianReport.fromJson(Map<Object?, Object?>.from(item)))
+        .toList();
+  }
+
+  /// Submits a dangerous-call report from the protected phone to its pair.
+  Future<String> pairingReport({
+    required String deviceId,
+    required String reportId,
+    required String callerLast4,
+    required int risk,
+    required String riskLabel,
+    required String summary,
+    required List<String> signals,
+  }) async {
+    final value = await _postJson('/v1/pair/report', {
+      'elderlyDeviceId': deviceId,
+      'reportId': reportId,
+      'callerLast4': callerLast4,
+      'risk': risk,
+      'riskLabel': riskLabel,
+      'summary': summary,
+      'signals': signals,
+    });
+    return value['status']?.toString() ?? 'stored';
+  }
+
   Future<GuardianEnrollment> enrollGuardian({
     required String deviceId,
     required String guardianPhone,

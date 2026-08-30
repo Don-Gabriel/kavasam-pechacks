@@ -1,41 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kavasam_mobile/models/phone.dart';
 import 'package:kavasam_mobile/models/security_analysis.dart';
 import 'package:kavasam_mobile/services/cloud_safety_service.dart';
 import 'package:kavasam_mobile/services/phone_bridge.dart';
 
+/// Guardian pairing tab. Both the protected (elderly) phone and the guardian
+/// phone run the same app: the protected phone shows a 6-character code, the
+/// guardian enters it to link, and danger reports appear here — all tied to a
+/// single MongoDB-backed pairing so devices never cross-connect.
 class GuardianScreen extends StatefulWidget {
   const GuardianScreen({
     super.key,
     required this.service,
     required this.bridge,
     required this.deviceId,
-    required this.protectedUserConfig,
-    required this.busy,
-    required this.onSetup,
-    required this.onRefresh,
-    required this.onRemove,
   });
 
   final CloudSafetyService service;
   final PhoneBridge bridge;
   final String deviceId;
-  final GuardianConfig protectedUserConfig;
-  final bool busy;
-  final Future<void> Function() onSetup;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function() onRemove;
 
   @override
   State<GuardianScreen> createState() => _GuardianScreenState();
 }
 
 class _GuardianScreenState extends State<GuardianScreen> {
+  PairingStatus _protected = const PairingStatus();
   GuardianViewerConfig _viewer = const GuardianViewerConfig();
   List<GuardianReport> _reports = const [];
   List<HighRiskAnalysis> _local = const [];
+  String _alias = '';
   bool _loading = true;
+  bool _busy = false;
   String? _message;
+
+  bool get _ready => widget.service.isConfigured;
 
   @override
   void initState() {
@@ -45,19 +45,30 @@ class _GuardianScreenState extends State<GuardianScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final config = await widget.bridge.getGuardianConfig();
     final viewer = await widget.bridge.getGuardianViewerConfig();
     final local = await widget.bridge.getHighRiskAnalyses();
+    var protected = const PairingStatus();
     var reports = <GuardianReport>[];
     var message = _message;
-    if (viewer.isSignedIn && widget.service.isConfigured) {
+    if (_ready) {
       try {
-        reports = await widget.service.guardianReports(viewer.sessionToken);
-      } on Object catch (error) {
-        message = error.toString();
+        protected = await widget.service.pairingStatus(widget.deviceId);
+      } on Object {
+        // Pairing status is best-effort; the tab still works offline.
+      }
+      if (viewer.isSignedIn) {
+        try {
+          reports = await widget.service.pairingReports(viewer.sessionToken);
+        } on Object catch (error) {
+          message = error.toString();
+        }
       }
     }
     if (!mounted) return;
     setState(() {
+      _alias = config.primaryAlias;
+      _protected = protected;
       _viewer = viewer;
       _local = local;
       _reports = reports;
@@ -66,39 +77,103 @@ class _GuardianScreenState extends State<GuardianScreen> {
     });
   }
 
-  Future<void> _claim() async {
-    final phone = TextEditingController();
+  Future<void> _createCode() async {
+    var alias = _alias;
+    if (alias.isEmpty) {
+      alias = await _promptText(
+        title: 'Set up guardian protection',
+        label: 'Your name (shown to your guardian)',
+        hint: 'Example: Amma',
+        maxLength: 48,
+      );
+      if (alias.isEmpty) return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.bridge.saveGuardianConfig(GuardianConfig(primaryAlias: alias));
+      final status = await widget.service.pairingCode(widget.deviceId, alias);
+      if (!mounted) return;
+      setState(() {
+        _alias = alias;
+        _protected = status;
+        _message = 'Share this code with the person who will watch over you.';
+      });
+    } on Object catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unlink() async {
+    setState(() => _busy = true);
+    try {
+      final status = await widget.service.pairingUnlink(widget.deviceId);
+      if (mounted) {
+        setState(() {
+          _protected = status;
+          _message = 'Guardian code reset. Generate a new one to re-link.';
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _link() async {
     final code = TextEditingController();
-    final values = await showDialog<(String, String)>(
+    final name = TextEditingController();
+    final alert = TextEditingController();
+    final values = await showDialog<(String, String, String)>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Open guardian reports'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Use the phone number that received the Kavasam invite and its 4-digit reference code.',
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Guardian phone number',
-                border: OutlineInputBorder(),
+        title: const Text('Link to a family member'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter the 6-character code shown on their Kavasam phone.',
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: code,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: const InputDecoration(
-                labelText: 'Reference code',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              TextField(
+                controller: code,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 6,
+                inputFormatters: [
+                  UpperCaseTextFormatter(),
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Guardian code',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-          ],
+              TextField(
+                controller: name,
+                maxLength: 48,
+                decoration: const InputDecoration(
+                  labelText: 'Your name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 4),
+              TextField(
+                controller: alert,
+                maxLength: 120,
+                decoration: const InputDecoration(
+                  labelText: 'Alert to (optional)',
+                  hintText: 'Telegram @username or email for n8n alerts',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -106,30 +181,39 @@ class _GuardianScreenState extends State<GuardianScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, (phone.text.trim(), code.text.trim())),
-            child: const Text('Verify'),
+            onPressed: () => Navigator.pop(context, (
+              code.text.trim(),
+              name.text.trim(),
+              alert.text.trim(),
+            )),
+            child: const Text('Link'),
           ),
         ],
       ),
     );
-    phone.dispose();
     code.dispose();
-    if (values == null || values.$1.isEmpty || values.$2.length != 4) return;
+    name.dispose();
+    alert.dispose();
+    if (values == null) return;
+    if (values.$1.length != 6 || values.$2.isEmpty) {
+      setState(() => _message = 'Enter the 6-character code and your name.');
+      return;
+    }
     setState(() {
-      _loading = true;
+      _busy = true;
       _message = null;
     });
     try {
-      final claim = await widget.service.claimGuardianRelationship(
-        guardianPhone: values.$1,
-        referenceCode: values.$2,
+      final claim = await widget.service.pairingClaim(
+        code: values.$1,
         guardianDeviceId: widget.deviceId,
+        guardianAlias: values.$2,
+        alertHandle: values.$3,
       );
-      _viewer = await widget.bridge.saveGuardianViewerConfig(
+      await widget.bridge.saveGuardianViewerConfig(
         GuardianViewerConfig(
-          guardianId: claim.guardianId,
-          primaryAlias: claim.primaryAlias,
+          guardianId: claim.pairingId,
+          primaryAlias: claim.elderlyAlias,
           sessionToken: claim.sessionToken,
           expiresAt: claim.expiresAt,
         ),
@@ -140,7 +224,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
       if (mounted) {
         setState(() {
           _message = error.toString();
-          _loading = false;
+          _busy = false;
         });
       }
     }
@@ -149,6 +233,43 @@ class _GuardianScreenState extends State<GuardianScreen> {
   Future<void> _signOut() async {
     await widget.bridge.clearGuardianViewerConfig();
     await _load();
+  }
+
+  Future<String> _promptText({
+    required String title,
+    required String label,
+    required String hint,
+    required int maxLength,
+  }) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: maxLength,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value ?? '';
   }
 
   @override
@@ -167,8 +288,16 @@ class _GuardianScreenState extends State<GuardianScreen> {
         ),
         const SizedBox(height: 5),
         const Text(
-          'Set up help for this phone, or securely view danger reports for someone you protect.',
+          'Link two Kavasam phones with a code. The guardian sees danger '
+          'reports here and gets an alert when a scam call is detected.',
         ),
+        if (!_ready) ...[
+          const SizedBox(height: 12),
+          const _Status(
+            text:
+                'Connect the Kavasam gateway (build with the gateway URL) to use guardian pairing.',
+          ),
+        ],
         if (_message != null) ...[
           const SizedBox(height: 12),
           _Status(text: _message!),
@@ -177,91 +306,12 @@ class _GuardianScreenState extends State<GuardianScreen> {
         _Section(
           icon: Icons.elderly_rounded,
           title: 'This phone is protected',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.protectedUserConfig.isVerified
-                    ? '${widget.protectedUserConfig.primaryAlias} · guardian verified'
-                    : widget.protectedUserConfig.isConfigured
-                    ? 'Invitation pending · ${widget.protectedUserConfig.guardianPhone}'
-                    : 'No guardian has been added yet.',
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: widget.busy ? null : widget.onSetup,
-                    icon: const Icon(Icons.person_add_alt_1_rounded),
-                    label: Text(
-                      widget.protectedUserConfig.isConfigured
-                          ? 'Change guardian'
-                          : 'Add guardian',
-                    ),
-                  ),
-                  if (widget.protectedUserConfig.isConfigured &&
-                      !widget.protectedUserConfig.isVerified)
-                    OutlinedButton(
-                      onPressed: widget.busy ? null : widget.onRefresh,
-                      child: const Text('Check opt-in'),
-                    ),
-                  if (widget.protectedUserConfig.isConfigured)
-                    TextButton(
-                      onPressed: widget.busy ? null : widget.onRemove,
-                      child: const Text('Remove'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'When a tracked call scores above 80, Kavasam keeps the report locally for 7 days and sends the verified guardian an SMS alert.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
+          child: _protectedBody(),
         ),
         _Section(
           icon: Icons.family_restroom_rounded,
           title: 'I am the guardian',
-          child: _viewer.isSignedIn
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Protecting ${_viewer.primaryAlias}'),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _loading ? null : _load,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Refresh reports'),
-                        ),
-                        TextButton(
-                          onPressed: _loading ? null : _signOut,
-                          child: const Text('Sign out'),
-                        ),
-                      ],
-                    ),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Enter the invitation details once. Kavasam stores a revocable session token on this phone—not the protected person’s call audio.',
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: _loading || !widget.service.isConfigured
-                          ? null
-                          : _claim,
-                      icon: const Icon(Icons.verified_user_rounded),
-                      label: const Text('Verify guardian access'),
-                    ),
-                  ],
-                ),
+          child: _guardianBody(),
         ),
         if (_loading) const LinearProgressIndicator(),
         if (_viewer.isSignedIn) ...[
@@ -272,13 +322,13 @@ class _GuardianScreenState extends State<GuardianScreen> {
           ),
           const SizedBox(height: 8),
           if (_reports.isEmpty && !_loading)
-            const _Status(text: 'No danger reports have been received.')
+            const _Status(text: 'No danger reports have been received yet.')
           else
             ..._reports.map((report) => _ReportCard(report: report)),
         ],
         const SizedBox(height: 16),
         const Text(
-          'Stored on this phone · 7 days · scores above 80 only',
+          'On this phone · dangerous tracked calls (score above 80)',
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
         ),
         const SizedBox(height: 8),
@@ -306,8 +356,131 @@ class _GuardianScreenState extends State<GuardianScreen> {
     ),
   );
 
+  Widget _protectedBody() {
+    if (_protected.hasCode) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Your guardian code'),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              SelectableText(
+                _protected.code,
+                style: const TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 8,
+                  color: Color(0xFF176BCE),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Copy',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _protected.code));
+                  setState(() => _message = 'Code copied.');
+                },
+                icon: const Icon(Icons.copy_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _protected.isLinked
+                ? 'Linked to ${_protected.guardianAlias.isEmpty ? 'your guardian' : _protected.guardianAlias}. They will get danger alerts.'
+                : 'Waiting for your guardian to enter this code.',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _load,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Refresh'),
+              ),
+              TextButton(
+                onPressed: _busy ? null : _unlink,
+                child: const Text('Reset code'),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Generate a code and share it with a trusted family member so they '
+          'can watch over your calls.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: !_ready || _busy ? null : _createCode,
+          icon: const Icon(Icons.qr_code_2_rounded),
+          label: const Text('Create guardian code'),
+        ),
+      ],
+    );
+  }
+
+  Widget _guardianBody() {
+    if (_viewer.isSignedIn) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Protecting ${_viewer.primaryAlias}'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _load,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Refresh reports'),
+              ),
+              TextButton(
+                onPressed: _loading ? null : _signOut,
+                child: const Text('Unlink'),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Enter the 6-character code from the phone you want to protect. '
+          'A revocable session is stored on this phone — never their call audio.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: !_ready || _busy ? null : _link,
+          icon: const Icon(Icons.link_rounded),
+          label: const Text('Link with a code'),
+        ),
+      ],
+    );
+  }
+
   static String _date(DateTime value) =>
       '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+}
+
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) => TextEditingValue(
+    text: newValue.text.toUpperCase(),
+    selection: newValue.selection,
+  );
 }
 
 class _Section extends StatelessWidget {

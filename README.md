@@ -15,7 +15,9 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Local vector risk scoring | Working | Deterministic on-device behavior vectors |
 | Actian VectorAI DB | Integrated | Real online scam-pattern collection, upsert, and nearest-neighbor search |
 | Per-call safety tracking | Working | User starts and stops tracking explicitly |
-| Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
+| Guardian device pairing | Working | Both phones run one app; the protected phone shows a 6-character code, the guardian enters it to link. MongoDB stores the pairing exclusively so devices never cross-connect |
+| Guardian danger alerts (n8n) | Working | A dangerous tracked call posts a report to the pair in MongoDB and fires an n8n webhook that alerts the guardian through any channel their workflow uses (no SMS/DLT needed) |
+| Guardian SMS approval | Implemented | Optional in-call ACCEPT/REJECT over SMS; verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
 | Message, email, URL, QR, screenshot analysis | Working | Explicit paste/upload or live QR camera scan; a message and every link inside it are checked at the same time; hyperlink checks now read the destination page content (title, visible text, login/OTP prompts, brand impersonation) for Gemini; deterministic safety checks throughout |
@@ -29,7 +31,7 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Kavasam Link in-app call | Experimental | Phone-to-phone call relayed by the gateway with live two-sided Gemini transcription and scam scoring; both phones must reach the same gateway (hotspot/LAN or hosted) |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **5.4.0**.
+Current mobile version: **5.5.0**.
 
 ## Features
 

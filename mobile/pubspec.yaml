@@ -1,7 +1,7 @@
 name: kavasam_mobile
 description: "An offline-first Android caller ID and spam protection phone app."
 publish_to: "none"
-version: 5.4.0+12
+version: 5.5.0+13
 
 environment:
   sdk: ^3.12.1

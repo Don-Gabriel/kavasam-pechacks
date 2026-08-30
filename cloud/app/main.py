@@ -13,6 +13,7 @@ from .analyzer import GeminiAnalyzer
 from .content_analysis import ContentAnalyzer
 from .guardian import GuardianApprovalStore
 from .link import router as link_router
+from .pairing import PairingError, PairingStore
 from .voice import VoiceWarningService, encode_audio
 from .reputation import CommunityReputationStore
 from .snowflake_analytics import AnalyticsEvent, SnowflakeAnalytics
@@ -35,6 +36,13 @@ from .schemas import (
     HealthResponse,
     ReputationLookupRequest,
     ReputationReportRequest,
+    PairingClaimRequest,
+    PairingClaimResponse,
+    PairingCodeRequest,
+    PairingReportList,
+    PairingReportRequest,
+    PairingReportResponse,
+    PairingStatusResponse,
     SafetyAnalysisRequest,
     SafetyAnalysisResponse,
     UrlAnalysisRequest,
@@ -55,6 +63,7 @@ guardian = GuardianApprovalStore()
 content_analyzer = ContentAnalyzer()
 snowflake = SnowflakeAnalytics()
 voice = VoiceWarningService()
+pairing = PairingStore()
 
 
 @app.middleware("http")
@@ -77,6 +86,7 @@ async def health() -> HealthResponse:
         snowflakeConfigured=snowflake.configured,
         snowflakeStatus=snowflake.status,
         voiceConfigured=voice.configured,
+        pairingConfigured=pairing.configured,
     )
 
 
@@ -106,6 +116,103 @@ async def analyze(
         ),
     )
     return result
+
+
+@app.post("/v1/pair/code", response_model=PairingStatusResponse)
+def pairing_code(event: PairingCodeRequest) -> PairingStatusResponse:
+    from .pairing import protected_status_message
+
+    try:
+        view = pairing.code_for(str(event.elderlyDeviceId), event.alias)
+    except PairingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return PairingStatusResponse(
+        status=view["status"],
+        code=view["code"],
+        guardianAlias=view["guardianAlias"],
+        message=protected_status_message(view["status"]),
+    )
+
+
+@app.get("/v1/pair/status", response_model=PairingStatusResponse)
+def pairing_status(elderly_device_id: str = Query(alias="elderlyDeviceId")) -> PairingStatusResponse:
+    from .pairing import protected_status_message
+
+    try:
+        view = pairing.status_for(elderly_device_id)
+    except PairingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return PairingStatusResponse(
+        status=view["status"],
+        code=view["code"],
+        guardianAlias=view["guardianAlias"],
+        message=protected_status_message(view["status"]),
+    )
+
+
+@app.post("/v1/pair/unlink", response_model=PairingStatusResponse)
+def pairing_unlink(event: PairingCodeRequest) -> PairingStatusResponse:
+    try:
+        view = pairing.unpair(str(event.elderlyDeviceId))
+    except PairingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return PairingStatusResponse(status=view["status"], code="", guardianAlias="")
+
+
+@app.post("/v1/pair/claim", response_model=PairingClaimResponse)
+def pairing_claim(event: PairingClaimRequest) -> PairingClaimResponse:
+    try:
+        result = pairing.claim(
+            event.code,
+            str(event.guardianDeviceId),
+            event.guardianAlias,
+            event.alertHandle,
+        )
+    except PairingError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return PairingClaimResponse(
+        pairingId=result["pairingId"],
+        sessionToken=result["sessionToken"],
+        elderlyAlias=result["elderlyAlias"],
+        expiresAt=result["expiresAt"],
+        message=f"Linked to {result['elderlyAlias']}. Danger reports will appear here.",
+    )
+
+
+@app.post("/v1/pair/report", response_model=PairingReportResponse)
+def pairing_report(event: PairingReportRequest) -> PairingReportResponse:
+    try:
+        status = pairing.submit_report(
+            str(event.elderlyDeviceId),
+            {
+                "reportId": str(event.reportId),
+                "callerLast4": event.callerLast4,
+                "risk": event.risk,
+                "riskLabel": event.riskLabel,
+                "summary": event.summary,
+                "signals": event.signals,
+            },
+        )
+    except PairingError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return PairingReportResponse(reportId=event.reportId, status=status)
+
+
+@app.get("/v1/pair/reports", response_model=PairingReportList)
+def pairing_reports(
+    authorization: str = Header(default="", alias="Authorization"),
+) -> PairingReportList:
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Guardian sign-in is required.")
+    try:
+        result = pairing.reports_for(token)
+    except PairingError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    return PairingReportList(
+        elderlyAlias=result["elderlyAlias"],
+        reports=result["reports"],
+    )
 
 
 @app.post("/v1/voice/warning", response_model=VoiceWarningResponse)

@@ -752,11 +752,6 @@ class _CallerScreenState extends State<CallerScreen>
                     service: _cloudSafety,
                     bridge: widget.bridge,
                     deviceId: _reporterId,
-                    protectedUserConfig: _guardian,
-                    busy: _guardianBusy,
-                    onSetup: _setupGuardian,
-                    onRefresh: _checkGuardian,
-                    onRemove: _removeGuardian,
                   ),
                 ],
               ),
@@ -2580,6 +2575,33 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
           call: widget.call,
           assessment: assessment,
         );
+        // Push the danger report to the guardian pairing (MongoDB + n8n alert).
+        final digits = widget.call.number.replaceAll(RegExp(r'[^0-9]'), '');
+        final last4 = digits.length <= 4
+            ? digits
+            : digits.substring(digits.length - 4);
+        try {
+          final status = await widget.service.pairingReport(
+            deviceId: widget.deviceId,
+            reportId: _reportId,
+            callerLast4: last4,
+            risk: assessment.risk,
+            riskLabel: assessment.risk > 80 ? 'Dangerous' : assessment.level,
+            summary: assessment.warningText,
+            signals: widget.call.trackingSignals,
+          );
+          _deliveryNote = status == 'delivered'
+              ? 'Guardian alerted.'
+              : status == 'stored'
+              ? 'Danger report sent to your guardian pairing.'
+              : status == 'pending'
+              ? 'Guardian report saved; alert delivery is pending.'
+              : 'Danger report saved for your guardian.';
+        } on Object {
+          // No guardian code yet, or the gateway is unreachable — the local
+          // 7-day copy above is still kept.
+          _deliveryNote = 'Danger report saved locally for 7 days.';
+        }
         if (widget.guardian.isVerified) {
           try {
             final status = await widget.service.submitGuardianReport(
@@ -2594,11 +2616,8 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
                 ? 'Guardian alerted by SMS.'
                 : 'Guardian report stored; SMS delivery is pending.';
           } on Object catch (_) {
-            _deliveryNote =
-                'Danger report saved locally. Guardian delivery is unavailable.';
+            // The pairing delivery note above already covers this case.
           }
-        } else {
-          _deliveryNote = 'Danger report saved locally for 7 days.';
         }
       }
       if (!mounted) return;
