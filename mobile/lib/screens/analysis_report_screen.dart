@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/models/security_analysis.dart';
+import 'package:kavasam_mobile/services/cloud_safety_service.dart';
+import 'package:kavasam_mobile/services/phone_bridge.dart';
 import 'package:kavasam_mobile/widgets/analysis_result_view.dart';
+import 'package:kavasam_mobile/widgets/speak_warning_button.dart';
 
 /// Full-screen report for a scanned QR code (or any payload analysed together
 /// with its embedded links). Runs the supplied analysis once on open.
@@ -10,11 +13,15 @@ class AnalysisReportScreen extends StatefulWidget {
     required this.heading,
     required this.payload,
     required this.runner,
+    this.bridge,
+    this.service,
   });
 
   final String heading;
   final String payload;
   final Future<CombinedAnalysis> Function() runner;
+  final PhoneBridge? bridge;
+  final CloudSafetyService? service;
 
   @override
   State<AnalysisReportScreen> createState() => _AnalysisReportScreenState();
@@ -112,6 +119,16 @@ class _AnalysisReportScreenState extends State<AnalysisReportScreen> {
                 result: analysis.primary,
                 title: analysis.primaryLabel,
               ),
+              if (widget.bridge != null &&
+                  widget.service != null &&
+                  analysis.worstRisk >= 50) ...[
+                const SizedBox(height: 10),
+                SpeakWarningButton(
+                  bridge: widget.bridge!,
+                  service: widget.service!,
+                  text: analysis.primary.summary,
+                ),
+              ],
               if (analysis.links.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(

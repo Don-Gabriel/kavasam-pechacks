@@ -79,6 +79,7 @@ class HealthResponse(BaseModel):
     snowflakeStatus: Literal[
         "not-configured", "not-checked", "ready", "unavailable"
     ] = "not-configured"
+    voiceConfigured: bool = False
 
 
 ContentKind = Literal["message", "qr"]
@@ -184,6 +185,23 @@ class CommunityReputationResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reasons: list[str] = Field(max_length=4)
     source: Literal["community", "none"]
+
+
+class VoiceWarningRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    text: str = Field(min_length=1, max_length=320)
+    language: Literal["en", "ta"] = "en"
+
+
+class VoiceWarningResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audioBase64: str = Field(min_length=4)
+    mimeType: Literal["audio/mpeg"] = "audio/mpeg"
+    spokenText: str = Field(max_length=320)
+    language: Literal["en", "ta"]
+    source: Literal["elevenlabs"] = "elevenlabs"
 
 
 class LinkRoomRequest(BaseModel):

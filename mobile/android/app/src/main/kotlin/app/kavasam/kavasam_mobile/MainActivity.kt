@@ -311,6 +311,23 @@ class MainActivity : FlutterActivity() {
                     LinkCallEngine.addSignal(this, call.argument<String>("signal").orEmpty()),
                 )
                 "linkSnapshot" -> result.success(LinkCallEngine.snapshot())
+                "playWarningAudio" -> result.success(
+                    VoiceWarningPlayer.playAudio(
+                        this,
+                        call.argument<ByteArray>("audio") ?: ByteArray(0),
+                    ),
+                )
+                "speakWarning" -> result.success(
+                    VoiceWarningPlayer.speak(
+                        this,
+                        call.argument<String>("text").orEmpty(),
+                        call.argument<String>("language").orEmpty(),
+                    ),
+                )
+                "stopWarning" -> {
+                    VoiceWarningPlayer.stop()
+                    result.success(true)
+                }
                 "setAudioCapture" -> result.success(
                     if (call.argument<Boolean>("value") == true && !hasMicPermission()) {
                         false

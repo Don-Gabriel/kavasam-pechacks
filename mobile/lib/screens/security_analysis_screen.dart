@@ -4,17 +4,21 @@ import 'package:kavasam_mobile/models/security_analysis.dart';
 import 'package:kavasam_mobile/screens/analysis_report_screen.dart';
 import 'package:kavasam_mobile/screens/qr_scanner_screen.dart';
 import 'package:kavasam_mobile/services/cloud_safety_service.dart';
+import 'package:kavasam_mobile/services/phone_bridge.dart';
 import 'package:kavasam_mobile/widgets/analysis_result_view.dart';
+import 'package:kavasam_mobile/widgets/speak_warning_button.dart';
 
 class SecurityAnalysisScreen extends StatefulWidget {
   const SecurityAnalysisScreen({
     super.key,
     required this.service,
     required this.cloudConsent,
+    this.bridge,
   });
 
   final CloudSafetyService service;
   final bool cloudConsent;
+  final PhoneBridge? bridge;
 
   @override
   State<SecurityAnalysisScreen> createState() => _SecurityAnalysisScreenState();
@@ -88,6 +92,8 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
           heading: 'QR analysis',
           payload: payload,
           runner: () => widget.service.analyzeQrPayload(payload),
+          bridge: widget.bridge,
+          service: widget.service,
         ),
       ),
     );
@@ -262,6 +268,7 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
       if (_result != null) ...[
         const SizedBox(height: 16),
         AnalysisResultView(result: _result!),
+        ..._speakRow(_result!.summary, _result!.risk),
       ],
       if (_combined != null) ...[
         const SizedBox(height: 16),
@@ -269,6 +276,7 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
           result: _combined!.primary,
           title: _combined!.primaryLabel,
         ),
+        ..._speakRow(_combined!.primary.summary, _combined!.worstRisk),
         if (_combined!.links.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text(
@@ -287,6 +295,18 @@ class _SecurityAnalysisScreenState extends State<SecurityAnalysisScreen> {
       ],
     ],
   );
+
+  List<Widget> _speakRow(String text, int risk) {
+    if (widget.bridge == null || risk < 50) return const [];
+    return [
+      const SizedBox(height: 10),
+      SpeakWarningButton(
+        bridge: widget.bridge!,
+        service: widget.service,
+        text: text,
+      ),
+    ];
+  }
 
   Widget _linkCard(LinkAnalysis link) {
     final result = link.result;

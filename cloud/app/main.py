@@ -13,6 +13,7 @@ from .analyzer import GeminiAnalyzer
 from .content_analysis import ContentAnalyzer
 from .guardian import GuardianApprovalStore
 from .link import router as link_router
+from .voice import VoiceWarningService, encode_audio
 from .reputation import CommunityReputationStore
 from .snowflake_analytics import AnalyticsEvent, SnowflakeAnalytics
 from .schemas import (
@@ -37,6 +38,8 @@ from .schemas import (
     SafetyAnalysisRequest,
     SafetyAnalysisResponse,
     UrlAnalysisRequest,
+    VoiceWarningRequest,
+    VoiceWarningResponse,
 )
 
 app = FastAPI(
@@ -51,6 +54,7 @@ reputation = CommunityReputationStore()
 guardian = GuardianApprovalStore()
 content_analyzer = ContentAnalyzer()
 snowflake = SnowflakeAnalytics()
+voice = VoiceWarningService()
 
 
 @app.middleware("http")
@@ -72,6 +76,7 @@ async def health() -> HealthResponse:
         actianCollection=actian.collection,
         snowflakeConfigured=snowflake.configured,
         snowflakeStatus=snowflake.status,
+        voiceConfigured=voice.configured,
     )
 
 
@@ -101,6 +106,21 @@ async def analyze(
         ),
     )
     return result
+
+
+@app.post("/v1/voice/warning", response_model=VoiceWarningResponse)
+async def voice_warning(event: VoiceWarningRequest) -> VoiceWarningResponse:
+    if not voice.configured:
+        raise HTTPException(status_code=503, detail="Voice warnings are not configured.")
+    try:
+        audio, spoken = await voice.synthesize(event.text, event.language)
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return VoiceWarningResponse(
+        audioBase64=encode_audio(audio),
+        spokenText=spoken,
+        language=event.language,
+    )
 
 
 @app.post("/v1/content/analyze", response_model=ContentAnalysisResponse)

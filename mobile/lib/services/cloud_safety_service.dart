@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:kavasam_mobile/models/phone.dart';
 import 'package:kavasam_mobile/models/security_analysis.dart';
@@ -199,6 +200,24 @@ class CloudSafetyService {
       'locale': locale,
     });
     return SecurityAnalysis.fromJson(value);
+  }
+
+  /// Synthesises a spoken warning via ElevenLabs and returns the MP3 bytes.
+  /// Throws [CloudSafetyException] when voice is unavailable, so callers can
+  /// fall back to the device's own text-to-speech.
+  Future<Uint8List> warningAudio({
+    required String text,
+    String language = 'en',
+  }) async {
+    final value = await _postJson('/v1/voice/warning', {
+      'text': text.trim().isEmpty ? 'Stay alert. This may be a scam.' : text,
+      'language': language,
+    });
+    final encoded = value['audioBase64']?.toString() ?? '';
+    if (encoded.isEmpty) {
+      throw const CloudSafetyException('The gateway returned no audio.');
+    }
+    return base64Decode(encoded);
   }
 
   /// Creates a Kavasam Link room and returns its six-digit code.

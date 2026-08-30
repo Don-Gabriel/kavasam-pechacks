@@ -18,7 +18,8 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
-| Message, email, URL, QR, screenshot analysis | Working | Explicit paste/upload or live QR camera scan; a message and every link inside it are checked at the same time; Gemini plus deterministic safety checks |
+| Message, email, URL, QR, screenshot analysis | Working | Explicit paste/upload or live QR camera scan; a message and every link inside it are checked at the same time; hyperlink checks now read the destination page content (title, visible text, login/OTP prompts, brand impersonation) for Gemini; deterministic safety checks throughout |
+| ElevenLabs spoken warnings | Integrated | Gateway synthesises an English or Tamil scam warning (Tamil translated via Gemini) after a high-risk result or call signal; falls back to the device's own text-to-speech when unavailable |
 | Seven-day danger history | Working | Local retention only for AI call scores above 80 |
 | Guardian report inbox | Working | Guardian device claim, 30-day session, SMS alert, seven-day reports |
 | Snowflake analytics | Integrated | Metadata-only, asynchronous, and fail-open; requires valid key-pair configuration |
@@ -28,7 +29,7 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Kavasam Link in-app call | Experimental | Phone-to-phone call relayed by the gateway with live two-sided Gemini transcription and scam scoring; both phones must reach the same gateway (hotspot/LAN or hosted) |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **5.3.0**.
+Current mobile version: **5.4.0**.
 
 ## Features
 

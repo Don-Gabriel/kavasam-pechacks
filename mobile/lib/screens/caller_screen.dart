@@ -7,6 +7,7 @@ import 'package:kavasam_mobile/screens/link_call_screen.dart';
 import 'package:kavasam_mobile/screens/security_analysis_screen.dart';
 import 'package:kavasam_mobile/services/cloud_safety_service.dart';
 import 'package:kavasam_mobile/services/phone_bridge.dart';
+import 'package:kavasam_mobile/widgets/speak_warning_button.dart';
 
 class CallerScreen extends StatefulWidget {
   const CallerScreen({super.key, required this.bridge});
@@ -889,6 +890,7 @@ class _CallerScreenState extends State<CallerScreen>
               SecurityAnalysisScreen(
                 service: _cloudSafety,
                 cloudConsent: _cloudConsent,
+                bridge: widget.bridge,
               ),
               _insightsPage(),
             ],
@@ -2715,6 +2717,14 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
             'AI: ${assessment.source} · vectors: ${assessment.vectorDatabase} · advisory only · no phone number or audio sent',
             style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
+          if (assessment.risk >= 60) ...[
+            const SizedBox(height: 10),
+            SpeakWarningButton(
+              bridge: widget.bridge,
+              service: widget.service,
+              text: assessment.warningText,
+            ),
+          ],
           if (_deliveryNote != null) ...[
             const SizedBox(height: 5),
             Text(

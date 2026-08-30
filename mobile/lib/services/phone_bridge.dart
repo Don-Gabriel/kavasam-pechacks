@@ -211,6 +211,16 @@ class PhoneBridge {
   Future<bool> setAudioCapture(bool value) =>
       _bool('setAudioCapture', {'value': value});
 
+  /// Plays ElevenLabs warning audio (MP3 bytes) through the native player.
+  Future<bool> playWarningAudio(Uint8List audio) =>
+      _bool('playWarningAudio', {'audio': audio});
+
+  /// Speaks a warning with the device's own text-to-speech as a fallback.
+  Future<bool> speakWarning(String text, String language) =>
+      _bool('speakWarning', {'text': text, 'language': language});
+
+  Future<bool> stopWarning() => _bool('stopWarning');
+
   Future<bool> linkStart({
     required String wsUrl,
     required String code,
