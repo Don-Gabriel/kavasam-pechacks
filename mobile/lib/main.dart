@@ -96,7 +96,10 @@ class KavasamApp extends StatelessWidget {
         chipTheme: const ChipThemeData(
           side: BorderSide(color: Color(0xFFD9E2EE)),
           shape: StadiumBorder(),
-          labelStyle: TextStyle(fontWeight: FontWeight.w700),
+          // The color is required: a labelStyle without one leaves chip labels
+          // with no resolved color, which paints white-on-white in release.
+          labelStyle: TextStyle(color: navy, fontWeight: FontWeight.w700),
+          iconTheme: IconThemeData(color: blue, size: 17),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
