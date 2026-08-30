@@ -81,6 +81,10 @@ class HealthResponse(BaseModel):
     ] = "not-configured"
     voiceConfigured: bool = False
     pairingConfigured: bool = False
+    elasticConfigured: bool = False
+    elasticStatus: Literal[
+        "not-configured", "not-checked", "ready", "unavailable"
+    ] = "not-configured"
 
 
 ContentKind = Literal["message", "qr"]

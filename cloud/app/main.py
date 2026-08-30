@@ -11,6 +11,7 @@ load_dotenv()
 from .actian_vector import ActianVectorStore, augment_with_actian
 from .analyzer import GeminiAnalyzer
 from .content_analysis import ContentAnalyzer
+from .elastic_search import ElasticScamStore
 from .guardian import GuardianApprovalStore
 from .link import router as link_router
 from .pairing import PairingError, PairingStore
@@ -60,7 +61,8 @@ analyzer = GeminiAnalyzer()
 actian = ActianVectorStore()
 reputation = CommunityReputationStore()
 guardian = GuardianApprovalStore()
-content_analyzer = ContentAnalyzer()
+elastic_emails = ElasticScamStore()
+content_analyzer = ContentAnalyzer(email_retriever=elastic_emails)
 snowflake = SnowflakeAnalytics()
 voice = VoiceWarningService()
 pairing = PairingStore()
@@ -87,6 +89,8 @@ async def health() -> HealthResponse:
         snowflakeStatus=snowflake.status,
         voiceConfigured=voice.configured,
         pairingConfigured=pairing.configured,
+        elasticConfigured=elastic_emails.configured,
+        elasticStatus=elastic_emails.status,
     )
 
 
