@@ -23,10 +23,11 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Guardian report inbox | Working | Guardian device claim, 30-day session, SMS alert, seven-day reports |
 | Snowflake analytics | Integrated | Metadata-only, asynchronous, and fail-open; requires valid key-pair configuration |
 | Render deployment | Demo-ready | Free Blueprint included; gateway data is ephemeral |
-| Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture it |
+| Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture the carrier voice stream |
+| In-call speech transcript | Experimental | Consent-gated microphone speech-to-text on the device; text only, digits masked before optional cloud analysis; speakerphone recommended so the caller is heard |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **5.0.0**.
+Current mobile version: **5.1.0**.
 
 ## Features
 

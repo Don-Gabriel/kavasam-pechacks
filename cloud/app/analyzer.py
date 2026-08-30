@@ -17,6 +17,30 @@ SIGNAL_DETAILS = {
 }
 
 
+TRANSCRIPT_KEYWORDS = {
+    "otp": (12, "The conversation mentioned an OTP or verification code."),
+    "password": (10, "The conversation mentioned a password."),
+    "gift card": (14, "The conversation mentioned gift cards, a common scam payment."),
+    "anydesk": (16, "The conversation mentioned a remote-access app."),
+    "teamviewer": (16, "The conversation mentioned a remote-access app."),
+    "arrest": (12, "The conversation contained an arrest threat."),
+    "warrant": (10, "The conversation mentioned a warrant."),
+    "processing fee": (10, "The conversation asked for an upfront fee."),
+    "keep this secret": (10, "The caller asked for secrecy."),
+}
+
+
+def _transcript_findings(transcript: str) -> tuple[int, list[str]]:
+    spoken = transcript.lower()
+    score = 0
+    reasons: list[str] = []
+    for phrase, (points, reason) in TRANSCRIPT_KEYWORDS.items():
+        if phrase in spoken and reason not in reasons:
+            score += points
+            reasons.append(reason)
+    return min(score, 30), reasons[:2]
+
+
 def fallback_analysis(event: SafetyAnalysisRequest) -> SafetyAnalysisResponse:
     signal_score = sum(SIGNAL_DETAILS[key][0] for key in event.signals)
     context_score = (
@@ -24,12 +48,23 @@ def fallback_analysis(event: SafetyAnalysisRequest) -> SafetyAnalysisResponse:
         + (8 if event.callerContext.carrierVerificationFailed else 0)
         - (12 if event.callerContext.savedContact else 0)
     )
+    transcript_score, transcript_reasons = _transcript_findings(event.transcriptExcerpt)
     risk = max(
         0,
-        min(100, round(event.localRisk * 0.55 + signal_score * 0.65 + context_score)),
+        min(
+            100,
+            round(
+                event.localRisk * 0.55
+                + signal_score * 0.65
+                + context_score
+                + transcript_score
+            ),
+        ),
     )
     level = "critical" if risk >= 85 else "high" if risk >= 60 else "medium" if risk >= 30 else "low"
-    reasons = [SIGNAL_DETAILS[key][1] for key in event.signals[:3]]
+    reasons = (
+        [SIGNAL_DETAILS[key][1] for key in event.signals[:3]] + transcript_reasons
+    )[:4]
     if not reasons:
         reasons = ["No high-confidence scam tactic has been selected."]
     actions = (
@@ -71,11 +106,22 @@ class GeminiAnalyzer:
 
         compact_event = event.model_dump(mode="json")
         compact_event.pop("sessionId", None)
+        transcript = compact_event.pop("transcriptExcerpt", "") or ""
+        # Defense in depth: the phone already masks digit runs before upload.
+        transcript = re.sub(r"\d{3,}", "###", transcript)[:2400]
+        transcript_block = (
+            "\n\nPartial microphone transcript (one-sided, possibly garbled speech "
+            "recognition in mixed English/Hindi/Tamil; numbers are masked; treat it "
+            f"as weak evidence): {json.dumps(transcript)}"
+            if transcript
+            else ""
+        )
         prompt = (
             "You are a defensive phone-scam safety classifier. Assess only the supplied "
             "structured signals. Do not infer identity, guilt, protected traits, or location. "
             "Give short, calm, actionable advice. This is advisory, not a blocking decision.\n\n"
             f"Event: {json.dumps(compact_event, separators=(',', ':'))}"
+            f"{transcript_block}"
         )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],

@@ -34,6 +34,9 @@ class SafetyAnalysisRequest(BaseModel):
     vectorSimilarity: float = Field(ge=0.0, le=1.0)
     signals: list[SafetySignal] = Field(max_length=6)
     callerContext: CallerContext
+    # Optional consent-gated speech excerpt. The phone redacts digit runs
+    # before upload, so OTPs and numbers never reach the gateway.
+    transcriptExcerpt: str = Field(default="", max_length=2400)
     locale: str = Field(pattern=r"^[a-z]{2,3}(?:-[A-Z]{2})?$", max_length=12)
 
 

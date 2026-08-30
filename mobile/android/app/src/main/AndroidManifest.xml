@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Used only for the consent-gated in-call speech transcript. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Used only by the separately consented cloud-safety client. Calling works without it. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

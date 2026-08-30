@@ -320,7 +320,8 @@ class _CallerScreenState extends State<CallerScreen>
     if (call == null) return 'none';
     return '${call.number}|${call.state}|${call.muted}|${call.speakerOn}|'
         '${call.trackingEnabled}|${call.trackingRiskScore}|'
-        '${call.trackingSignals.join(',')}';
+        '${call.trackingSignals.join(',')}|'
+        '${call.audioCaptured}|${call.captureStatus}|${call.transcript.length}';
   }
 
   Future<void> _lookupActiveCommunity(String number) async {
@@ -2210,21 +2211,83 @@ class _SafetyTrackingPanel extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 10),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.mic_off_rounded, size: 15, color: Colors.white54),
-              SizedBox(width: 6),
+              Icon(
+                call.audioCaptured
+                    ? Icons.mic_rounded
+                    : Icons.mic_off_rounded,
+                size: 15,
+                color: call.audioCaptured
+                    ? const Color(0xFF8BE9C0)
+                    : Colors.white54,
+              ),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Audio capture off · no transcript or recording',
-                  style: TextStyle(color: Colors.white54, fontSize: 10),
+                  call.audioCaptured
+                      ? call.captureStatus == 'listening'
+                            ? 'Listening on this phone · text only, nothing recorded'
+                            : call.captureStatus == 'unavailable'
+                            ? 'Microphone is unavailable during this call'
+                            : 'Starting speech capture…'
+                      : 'AI listening off · no transcript or recording',
+                  style: const TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+              ),
+              SizedBox(
+                height: 26,
+                child: Switch(
+                  value: call.audioCaptured,
+                  activeThumbColor: const Color(0xFF8BE9C0),
+                  onChanged: (value) async {
+                    if (value) {
+                      final granted = await bridge.requestMicPermission();
+                      if (!granted) return;
+                    }
+                    await bridge.setAudioCapture(value);
+                  },
                 ),
               ),
             ],
           ),
+          if (call.audioCaptured && !call.speakerOn) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Turn on the speaker so the caller can be heard too.',
+              style: TextStyle(color: Color(0xFFFFE082), fontSize: 10),
+            ),
+          ],
+          if (call.audioCaptured && call.transcript.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _transcriptTail(call.transcript),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _transcriptTail(String transcript) {
+    const max = 220;
+    if (transcript.length <= max) return transcript;
+    return '…${transcript.substring(transcript.length - max)}';
   }
 }
 
@@ -2464,8 +2527,11 @@ class _CloudAssessmentPanelState extends State<_CloudAssessmentPanel> {
     _scheduleIfNeeded();
   }
 
+  // The transcript bucket re-runs the analysis roughly every 160 spoken
+  // characters instead of on every recognized phrase.
   String get _signature =>
-      '${widget.call.trackingRiskScore}:${widget.call.trackingSignals.join(',')}';
+      '${widget.call.trackingRiskScore}:${widget.call.trackingSignals.join(',')}'
+      ':${widget.call.transcript.length ~/ 160}';
 
   void _scheduleIfNeeded() {
     if (!widget.consent ||

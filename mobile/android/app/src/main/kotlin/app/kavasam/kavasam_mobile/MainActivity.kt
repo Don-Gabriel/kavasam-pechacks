@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingContactsPermissionResult: MethodChannel.Result? = null
     private var pendingDataPermissionResult: MethodChannel.Result? = null
+    private var pendingMicPermissionResult: MethodChannel.Result? = null
     private var pendingDialNumber: String? = null
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -72,6 +73,10 @@ class MainActivity : FlutterActivity() {
             REQUEST_DATA_PERMISSIONS -> {
                 pendingDataPermissionResult?.success(dialerStatus())
                 pendingDataPermissionResult = null
+            }
+            REQUEST_MIC_PERMISSION -> {
+                pendingMicPermissionResult?.success(hasMicPermission())
+                pendingMicPermissionResult = null
             }
         }
     }
@@ -267,6 +272,17 @@ class MainActivity : FlutterActivity() {
                         this,
                         call.argument<Boolean>("value") == true,
                     ),
+                )
+                "requestMicPermission" -> requestMicPermission(result)
+                "setAudioCapture" -> result.success(
+                    if (call.argument<Boolean>("value") == true && !hasMicPermission()) {
+                        false
+                    } else {
+                        PhoneCallController.setAudioCapture(
+                            this,
+                            call.argument<Boolean>("value") == true,
+                        )
+                    },
                 )
                 "addSafetySignal" -> result.success(
                     PhoneCallController.addSafetySignal(
@@ -497,6 +513,25 @@ class MainActivity : FlutterActivity() {
         requestPermissions(missing.toTypedArray(), REQUEST_DATA_PERMISSIONS)
     }
 
+    private fun requestMicPermission(result: MethodChannel.Result) {
+        if (hasMicPermission()) {
+            result.success(true)
+            return
+        }
+        if (pendingMicPermissionResult != null) {
+            result.error("MIC_PERMISSION_ACTIVE", "A microphone permission request is already open.", null)
+            return
+        }
+        pendingMicPermissionResult = result
+        requestPermissions(
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            REQUEST_MIC_PERMISSION,
+        )
+    }
+
+    private fun hasMicPermission(): Boolean =
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
     private fun hasPhonePermission(): Boolean =
         checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
 
@@ -565,5 +600,6 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_SCREENING_ROLE = 4103
         private const val REQUEST_CONTACTS_PERMISSION = 4104
         private const val REQUEST_DATA_PERMISSIONS = 4105
+        private const val REQUEST_MIC_PERMISSION = 4106
     }
 }

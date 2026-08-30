@@ -251,6 +251,8 @@ class PhoneCallSnapshot {
     required this.trackingReasons,
     required this.trackingStartedAt,
     required this.audioCaptured,
+    this.captureStatus = 'off',
+    this.transcript = '',
     required this.direction,
     required this.state,
     required this.muted,
@@ -274,6 +276,8 @@ class PhoneCallSnapshot {
   final List<String> trackingReasons;
   final DateTime? trackingStartedAt;
   final bool audioCaptured;
+  final String captureStatus;
+  final String transcript;
   final String direction;
   final String state;
   final bool muted;
@@ -315,6 +319,8 @@ class PhoneCallSnapshot {
           )
         : null,
     audioCaptured: value['audioCaptured'] == true,
+    captureStatus: value['captureStatus']?.toString() ?? 'off',
+    transcript: value['transcript']?.toString() ?? '',
     direction: value['direction']?.toString() ?? 'outgoing',
     state: value['state']?.toString() ?? 'unknown',
     muted: value['muted'] == true,

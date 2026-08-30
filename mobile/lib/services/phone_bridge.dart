@@ -202,6 +202,9 @@ class PhoneBridge {
   Future<bool> sendDtmf(String digit) => _bool('sendDtmf', {'digit': digit});
   Future<bool> setSafetyTracking(bool value) =>
       _bool('setSafetyTracking', {'value': value});
+  Future<bool> requestMicPermission() => _bool('requestMicPermission');
+  Future<bool> setAudioCapture(bool value) =>
+      _bool('setAudioCapture', {'value': value});
   Future<bool> addSafetySignal(String signal) =>
       _bool('addSafetySignal', {'signal': signal});
   Future<bool> getCloudConsent() => _bool('getCloudConsent');

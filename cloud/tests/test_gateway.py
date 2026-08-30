@@ -68,6 +68,35 @@ def test_health_discloses_actian_configuration_state() -> None:
     assert response.json()["actianCollection"] == "kavasam_scam_patterns"
 
 
+def test_transcript_excerpt_is_optional_and_bounded() -> None:
+    event = SafetyAnalysisRequest.model_validate(valid_event())
+    assert event.transcriptExcerpt == ""
+    payload = valid_event()
+    payload["transcriptExcerpt"] = "x" * 2401
+    with pytest.raises(ValidationError):
+        SafetyAnalysisRequest.model_validate(payload)
+
+
+def test_fallback_uses_transcript_keywords() -> None:
+    quiet = SafetyAnalysisRequest.model_validate(valid_event())
+    payload = valid_event()
+    payload["transcriptExcerpt"] = (
+        "sir please install anydesk and share the otp to avoid arrest"
+    )
+    spoken = SafetyAnalysisRequest.model_validate(payload)
+    assert fallback_analysis(spoken).risk > fallback_analysis(quiet).risk
+    assert any(
+        "remote-access" in reason for reason in fallback_analysis(spoken).reasons
+    )
+
+
+def test_api_accepts_transcript_excerpt() -> None:
+    payload = valid_event()
+    payload["transcriptExcerpt"] = "they asked for a gift card"
+    response = TestClient(app).post("/v1/safety/analyze", json=payload)
+    assert response.status_code == 200
+
+
 def test_api_rejects_phone_number() -> None:
     payload = valid_event()
     payload["phoneNumber"] = "+919999999999"

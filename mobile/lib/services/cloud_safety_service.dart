@@ -65,9 +65,19 @@ class CloudSafetyService {
           (reason) => reason.toLowerCase().contains('carrier'),
         ),
       },
+      'transcriptExcerpt': _redactedTranscript(call.transcript),
       'locale': locale,
     });
     return CloudSafetyAssessment.fromJson(value);
+  }
+
+  /// Digit runs are masked before upload so OTPs, card numbers, and phone
+  /// numbers spoken aloud never leave the device.
+  String _redactedTranscript(String transcript) {
+    final tail = transcript.length <= 2000
+        ? transcript
+        : transcript.substring(transcript.length - 2000);
+    return tail.replaceAll(RegExp(r'\d{3,}'), '###');
   }
 
   Future<SecurityAnalysis> analyzeContent({

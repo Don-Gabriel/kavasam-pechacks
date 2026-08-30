@@ -60,12 +60,44 @@ object CallSafetyTracker {
         ),
     )
 
+    // Spoken phrases that light up a red-flag signal automatically while the
+    // consent-gated mic transcript is running. Matching is advisory only.
+    private val transcriptKeywords = mapOf(
+        "otp_pin" to listOf(
+            "otp", "one time password", "pin number", "your pin", "cvv", "password",
+        ),
+        "payment_transfer" to listOf(
+            "transfer", "gift card", "upi", "google pay", "phonepe", "paytm",
+            "bank account", "processing fee", "refund",
+        ),
+        "remote_access" to listOf(
+            "anydesk", "teamviewer", "quick support", "share your screen",
+            "screen share", "install the app", "install this app", "remote access",
+        ),
+        "impersonation" to listOf(
+            "bank officer", "police", "customs", "income tax", "cbi", "trai",
+            "courier", "fedex", "telecom department", "cyber cell",
+        ),
+        "secrecy_urgency" to listOf(
+            "do not tell", "don't tell", "keep this secret", "immediately",
+            "right now", "within the hour", "last chance",
+        ),
+        "threats" to listOf(
+            "arrest", "legal action", "warrant", "fir", "account will be blocked",
+            "sim will be blocked", "suspended",
+        ),
+    )
+
+    private const val MAX_TRANSCRIPT_CHARS = 2600
+
     private data class Session(
         val number: String,
         val startedAt: Long,
         val baseRisk: Int,
         val baseReasons: List<String>,
         val signals: LinkedHashSet<String> = linkedSetOf(),
+        val transcript: StringBuilder = StringBuilder(),
+        var audioCaptured: Boolean = false,
     )
 
     private var active: Session? = null
@@ -113,6 +145,37 @@ object CallSafetyTracker {
     }
 
     @Synchronized
+    fun setAudioCaptured(value: Boolean): Boolean {
+        val session = active ?: return false
+        session.audioCaptured = value
+        return true
+    }
+
+    @Synchronized
+    fun appendTranscript(context: Context, segment: String) {
+        val session = active ?: return
+        val text = segment.trim()
+        if (text.isEmpty()) return
+        if (session.transcript.isNotEmpty()) session.transcript.append(' ')
+        session.transcript.append(text)
+        if (session.transcript.length > MAX_TRANSCRIPT_CHARS) {
+            session.transcript.delete(0, session.transcript.length - MAX_TRANSCRIPT_CHARS)
+        }
+        val spoken = text.lowercase()
+        var matched = false
+        for ((key, phrases) in transcriptKeywords) {
+            if (key !in session.signals && phrases.any { it in spoken }) {
+                session.signals += key
+                matched = true
+            }
+        }
+        if (matched) persistActive(context)
+    }
+
+    @Synchronized
+    fun transcript(): String = active?.transcript?.toString().orEmpty()
+
+    @Synchronized
     fun finishCall(context: Context) {
         finish(context, "call_ended")
         currentNumber = "Unknown number"
@@ -129,6 +192,8 @@ object CallSafetyTracker {
             "trackingReasons" to emptyList<String>(),
             "trackingStartedAt" to 0L,
             "audioCaptured" to false,
+            "captureStatus" to CallSpeechCapture.STATUS_OFF,
+            "transcript" to "",
         )
         val score = score(session)
         return mapOf(
@@ -139,7 +204,9 @@ object CallSafetyTracker {
             "trackingSignals" to session.signals.toList(),
             "trackingReasons" to reasons(session),
             "trackingStartedAt" to session.startedAt,
-            "audioCaptured" to false,
+            "audioCaptured" to session.audioCaptured,
+            "captureStatus" to CallSpeechCapture.status(),
+            "transcript" to session.transcript.toString().takeLast(700),
         )
     }
 
@@ -246,10 +313,13 @@ object CallSafetyTracker {
 
     private fun finish(context: Context, status: String) {
         val session = active ?: return
+        CallSpeechCapture.stop()
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val history = runCatching {
             JSONArray(preferences.getString(HISTORY, "[]") ?: "[]")
         }.getOrDefault(JSONArray())
+        // The transcript is deliberately NOT persisted: it lives only in memory
+        // for the duration of the tracked call.
         val updated = JSONArray().put(
             JSONObject()
                 .put("number", session.number)
@@ -260,7 +330,7 @@ object CallSafetyTracker {
                 .put("similarity", similarity(session))
                 .put("signals", JSONArray(session.signals.toList()))
                 .put("status", status)
-                .put("audioCaptured", false),
+                .put("audioCaptured", session.audioCaptured),
         )
         for (index in 0 until minOf(history.length(), MAX_HISTORY - 1)) {
             updated.put(history.get(index))

@@ -188,6 +188,23 @@ object PhoneCallController {
     }
 
     @Synchronized
+    fun setAudioCapture(context: Context, value: Boolean): Boolean {
+        if (call == null) return false
+        if (!value) {
+            CallSpeechCapture.stop()
+            CallSafetyTracker.setAudioCaptured(false)
+            emitSnapshot()
+            return true
+        }
+        // Capture is part of the tracked-call session and needs one to exist.
+        if (!CallSafetyTracker.setAudioCaptured(true)) return false
+        val started = CallSpeechCapture.start(context) { emitSnapshot() }
+        if (!started) CallSafetyTracker.setAudioCaptured(false)
+        emitSnapshot()
+        return started
+    }
+
+    @Synchronized
     fun setMuted(value: Boolean): Boolean = service?.setMutedSafely(value) ?: false
 
     @Suppress("DEPRECATION")
