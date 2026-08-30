@@ -11,10 +11,13 @@
 
     <uses-feature android:name="android.hardware.telephony" android:required="true" />
 
+    <!-- Cleartext HTTP is needed for hotspot/LAN demo gateways; the app's own
+         URL validation restricts non-HTTPS gateways to private addresses. -->
     <application
         android:label="Kavasam"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
         android:allowBackup="false">
         <activity
             android:name=".MainActivity"
