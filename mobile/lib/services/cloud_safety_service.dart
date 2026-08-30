@@ -95,6 +95,77 @@ class CloudSafetyService {
     return SecurityAnalysis.fromJson(value);
   }
 
+  /// Analyses a message and every link it contains at the same time, so the
+  /// wording and each link's real destination are judged independently.
+  Future<CombinedAnalysis> analyzeMessageWithLinks(String text) async {
+    final links = extractLinks(text);
+    final results = await Future.wait([
+      analyzeContent(kind: 'message', text: text),
+      ...links.map(_safeLinkAnalysis),
+    ]);
+    return CombinedAnalysis(
+      primary: results.first as SecurityAnalysis,
+      primaryLabel: 'Message',
+      links: results.skip(1).cast<LinkAnalysis>().toList(),
+    );
+  }
+
+  /// Analyses a scanned QR payload. A URL payload is inspected as a
+  /// destination; any other payload is treated as text and any links it
+  /// carries are inspected alongside it.
+  Future<CombinedAnalysis> analyzeQrPayload(String payload) async {
+    final trimmed = payload.trim();
+    if (_looksLikeUrl(trimmed)) {
+      final primary = await analyzeUrl(trimmed);
+      return CombinedAnalysis(
+        primary: primary,
+        primaryLabel: 'QR link',
+        links: const [],
+      );
+    }
+    final links = extractLinks(trimmed);
+    final results = await Future.wait([
+      analyzeContent(kind: 'qr', text: trimmed),
+      ...links.map(_safeLinkAnalysis),
+    ]);
+    return CombinedAnalysis(
+      primary: results.first as SecurityAnalysis,
+      primaryLabel: 'QR content',
+      links: results.skip(1).cast<LinkAnalysis>().toList(),
+    );
+  }
+
+  Future<LinkAnalysis> _safeLinkAnalysis(String url) async {
+    try {
+      return LinkAnalysis(url: url, result: await analyzeUrl(url));
+    } on Object catch (error) {
+      return LinkAnalysis(url: url, error: error.toString());
+    }
+  }
+
+  static bool _looksLikeUrl(String value) {
+    final lower = value.toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+  }
+
+  /// Extracts up to [limit] distinct http(s)/www links from free text.
+  static List<String> extractLinks(String text, {int limit = 5}) {
+    final matches = RegExp(
+      r'''((?:https?:\/\/|www\.)[^\s<>()\[\]"']+)''',
+      caseSensitive: false,
+    ).allMatches(text);
+    final seen = <String>{};
+    final links = <String>[];
+    for (final match in matches) {
+      var link = match.group(0)!.replaceAll(RegExp(r'[.,;:!?]+$'), '');
+      if (link.isNotEmpty && seen.add(link.toLowerCase())) {
+        links.add(link);
+        if (links.length >= limit) break;
+      }
+    }
+    return links;
+  }
+
   Future<SecurityAnalysis> analyzeUrl(
     String url, {
     String locale = 'en-IN',

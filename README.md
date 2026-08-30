@@ -18,7 +18,7 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Guardian SMS approval | Implemented | Verified opt-in and n8n/SMS credentials required for live delivery |
 | Community caller ID | Working | Requires the optional gateway and separate consent |
 | Gemini safety reasoning | Integrated | Uses Gemini when a server key exists; otherwise explainable fallback |
-| Message, email, URL, QR, screenshot analysis | Working | Explicit upload/paste, Gemini plus deterministic safety checks |
+| Message, email, URL, QR, screenshot analysis | Working | Explicit paste/upload or live QR camera scan; a message and every link inside it are checked at the same time; Gemini plus deterministic safety checks |
 | Seven-day danger history | Working | Local retention only for AI call scores above 80 |
 | Guardian report inbox | Working | Guardian device claim, 30-day session, SMS alert, seven-day reports |
 | Snowflake analytics | Integrated | Metadata-only, asynchronous, and fail-open; requires valid key-pair configuration |
@@ -28,7 +28,7 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Kavasam Link in-app call | Experimental | Phone-to-phone call relayed by the gateway with live two-sided Gemini transcription and scam scoring; both phones must reach the same gateway (hotspot/LAN or hosted) |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **5.2.0**.
+Current mobile version: **5.3.0**.
 
 ## Features
 
@@ -68,7 +68,7 @@ Current mobile version: **5.2.0**.
 - Paste SMS/chat/email text for message analysis
 - Upload an email saved as PDF; validated text extraction is limited to 40 pages and 8 MB
 - Inspect direct destinations, known shorteners, public redirect chains, and host changes without allowing private-network requests
-- Choose a QR image; Google ML Kit decodes it locally before URL or payload analysis
+- Scan a QR code with the live camera; its payload is decoded on the device, then opened as a full report (URL destination check for link QRs, content analysis otherwise)
 - Upload a screenshot for explicit Gemini multimodal scam analysis
 - Clear risk score, reasons, recommended actions, and analysis-source attribution
 

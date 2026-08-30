@@ -83,6 +83,36 @@ class SecurityAnalysis {
   }
 }
 
+/// One embedded link's own analysis, kept beside the message/QR that carried
+/// it so a link's true destination is checked independently of the wording.
+class LinkAnalysis {
+  const LinkAnalysis({required this.url, this.result, this.error});
+
+  final String url;
+  final SecurityAnalysis? result;
+  final String? error;
+}
+
+/// A message or QR payload analysed together with every link inside it.
+class CombinedAnalysis {
+  const CombinedAnalysis({
+    required this.primary,
+    required this.primaryLabel,
+    required this.links,
+  });
+
+  final SecurityAnalysis primary;
+  final String primaryLabel;
+  final List<LinkAnalysis> links;
+
+  /// The highest risk across the payload and its links, so the header can warn
+  /// even when a benign-looking message hides a dangerous link.
+  int get worstRisk => [
+    primary.risk,
+    ...links.map((link) => link.result?.risk ?? 0),
+  ].fold(0, (a, b) => a > b ? a : b);
+}
+
 class HighRiskAnalysis {
   const HighRiskAnalysis({
     required this.reportId,

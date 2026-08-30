@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- Used only for the consent-gated in-call speech transcript. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Used only for live QR scanning in the safety analysis tools. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Used only by the separately consented cloud-safety client. Calling works without it. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
