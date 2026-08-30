@@ -91,7 +91,9 @@ class KavasamInCallService : InCallService() {
     @Suppress("DEPRECATION")
     fun isSpeakerOnNow(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            currentCallEndpoint.endpointType == CallEndpoint.TYPE_SPEAKER
+            // currentCallEndpoint is null until the first onCallEndpointChanged.
+            val endpoint: CallEndpoint? = currentCallEndpoint
+            endpoint?.endpointType == CallEndpoint.TYPE_SPEAKER
         } else {
             (callAudioState?.route ?: 0) and CallAudioState.ROUTE_SPEAKER != 0
         }
@@ -123,10 +125,11 @@ class KavasamInCallService : InCallService() {
 
     private fun setSpeakerEndpoint(value: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
-        val current = currentCallEndpoint
-        val speakerActive = current.endpointType == CallEndpoint.TYPE_SPEAKER
+        // currentCallEndpoint is null until the first onCallEndpointChanged.
+        val current: CallEndpoint? = currentCallEndpoint
+        val speakerActive = current?.endpointType == CallEndpoint.TYPE_SPEAKER
         if (speakerActive == value) return true
-        if (value) endpointBeforeSpeaker = current
+        if (value && current != null) endpointBeforeSpeaker = current
         val target = if (value) {
             availableEndpoints.firstOrNull { it.endpointType == CallEndpoint.TYPE_SPEAKER }
         } else {

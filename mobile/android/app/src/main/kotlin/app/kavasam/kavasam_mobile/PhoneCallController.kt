@@ -195,7 +195,10 @@ object PhoneCallController {
     fun setSpeaker(value: Boolean): Boolean = service?.setSpeakerSafely(value) ?: false
 
     private fun emitSnapshot() {
-        val value = snapshot()
+        // A snapshot failure must degrade to a missed UI update, never crash the
+        // process: process death unbinds the InCallService and Android hands the
+        // call to the system dialer UI.
+        val value = runCatching { snapshot() }.getOrNull()
         val send = { eventSink?.success(value) }
         if (Looper.myLooper() == Looper.getMainLooper()) send() else mainHandler.post { send() }
     }
