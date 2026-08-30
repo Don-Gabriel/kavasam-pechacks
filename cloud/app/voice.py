@@ -16,6 +16,10 @@ import httpx
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 ELEVENLABS_MODEL = "eleven_multilingual_v2"
 MAX_WARNING_CHARS = 320
+# A premade voice usable on the free API tier. Library/professional voices
+# (what accounts often configure) return 402 for free keys, so we fall back to
+# this so a warning is always spoken. eleven_multilingual_v2 renders Tamil too.
+PREMADE_FALLBACK_VOICE = "EXAVITQu4vr4xnSDxMaL"  # Sarah - reassuring, clear
 
 
 class VoiceWarningService:
@@ -31,12 +35,17 @@ class VoiceWarningService:
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key and (self.voice_en or self.voice_ta))
+        # A working premade voice is always available, so only the key is required.
+        return bool(self.api_key)
 
-    def _voice_for(self, language: str) -> str:
-        if language == "ta" and self.voice_ta:
-            return self.voice_ta
-        return self.voice_en or self.voice_ta
+    def _voice_candidates(self, language: str) -> list[str]:
+        preferred = self.voice_ta if language == "ta" else self.voice_en
+        candidates = [preferred, self.voice_en, PREMADE_FALLBACK_VOICE]
+        ordered: list[str] = []
+        for voice in candidates:
+            if voice and voice not in ordered:
+                ordered.append(voice)
+        return ordered
 
     async def synthesize(self, text: str, language: str) -> tuple[bytes, str]:
         """Returns (mp3_bytes, spoken_text). Raises RuntimeError when unavailable."""
@@ -45,29 +54,35 @@ class VoiceWarningService:
         spoken = text.strip()[:MAX_WARNING_CHARS]
         if language == "ta":
             spoken = await self._to_tamil(spoken)
-        voice_id = self._voice_for(language)
-        if not voice_id:
-            raise RuntimeError("No ElevenLabs voice is configured for that language.")
-        payload = {
-            "text": spoken,
-            "model_id": ELEVENLABS_MODEL,
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        }
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.post(
-                    ELEVENLABS_TTS_URL.format(voice_id=voice_id),
-                    headers={
-                        "xi-api-key": self.api_key,
-                        "accept": "audio/mpeg",
-                        "content-type": "application/json",
-                    },
-                    json=payload,
-                )
-                response.raise_for_status()
-        except httpx.HTTPError as error:
-            raise RuntimeError("ElevenLabs speech synthesis failed.") from error
-        return response.content, spoken
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            for voice_id in self._voice_candidates(language):
+                try:
+                    response = await client.post(
+                        ELEVENLABS_TTS_URL.format(voice_id=voice_id),
+                        headers={
+                            "xi-api-key": self.api_key,
+                            "accept": "audio/mpeg",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "text": spoken,
+                            "model_id": ELEVENLABS_MODEL,
+                            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                        },
+                    )
+                    response.raise_for_status()
+                    return response.content, spoken
+                except httpx.HTTPStatusError as error:
+                    last_error = error
+                    # 402 means this voice needs a paid plan; try the next one.
+                    if error.response.status_code == 402:
+                        continue
+                    break
+                except httpx.HTTPError as error:
+                    last_error = error
+                    break
+        raise RuntimeError("ElevenLabs speech synthesis failed.") from last_error
 
     async def _to_tamil(self, text: str) -> str:
         if not self._gemini_key:
