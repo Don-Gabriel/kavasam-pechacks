@@ -329,6 +329,99 @@ class PhoneCallSnapshot {
   );
 }
 
+class LinkTranscriptEntry {
+  const LinkTranscriptEntry({required this.speaker, required this.text});
+
+  final String speaker;
+  final String text;
+}
+
+/// State of a Kavasam Link in-app call, merged with the safety tracker.
+class LinkCallSnapshot {
+  const LinkCallSnapshot({
+    required this.status,
+    required this.role,
+    required this.code,
+    required this.muted,
+    required this.speakerOn,
+    required this.peerPresent,
+    required this.failure,
+    required this.entries,
+    required this.trackingRiskScore,
+    required this.trackingRiskLabel,
+    required this.trackingSimilarity,
+    required this.trackingSignals,
+    required this.trackingReasons,
+    required this.transcript,
+  });
+
+  final String status;
+  final String role;
+  final String code;
+  final bool muted;
+  final bool speakerOn;
+  final bool peerPresent;
+  final String failure;
+  final List<LinkTranscriptEntry> entries;
+  final int trackingRiskScore;
+  final String trackingRiskLabel;
+  final double trackingSimilarity;
+  final List<String> trackingSignals;
+  final List<String> trackingReasons;
+  final String transcript;
+
+  bool get isActive =>
+      status == 'connecting' || status == 'waiting' || status == 'active';
+
+  /// Adapts the link state to the shape the cloud analyzer expects.
+  PhoneCallSnapshot toAnalysisSnapshot() => PhoneCallSnapshot.fromMap({
+    'number': 'Kavasam Link',
+    'displayName': 'Kavasam Link call',
+    'trackingEnabled': true,
+    'trackingRiskScore': trackingRiskScore,
+    'trackingRiskLabel': trackingRiskLabel,
+    'trackingSimilarity': trackingSimilarity,
+    'trackingSignals': trackingSignals,
+    'trackingReasons': trackingReasons,
+    'transcript': transcript,
+    'state': status,
+  });
+
+  factory LinkCallSnapshot.fromMap(Map<Object?, Object?> value) =>
+      LinkCallSnapshot(
+        status: value['status']?.toString() ?? 'idle',
+        role: value['role']?.toString() ?? 'host',
+        code: value['code']?.toString() ?? '',
+        muted: value['muted'] == true,
+        speakerOn: value['speakerOn'] == true,
+        peerPresent: value['peerPresent'] == true,
+        failure: value['failure']?.toString() ?? '',
+        entries: (value['entries'] as List<Object?>? ?? const [])
+            .whereType<Map>()
+            .map(
+              (entry) => LinkTranscriptEntry(
+                speaker: entry['speaker']?.toString() ?? '',
+                text: entry['text']?.toString() ?? '',
+              ),
+            )
+            .toList(),
+        trackingRiskScore: (value['trackingRiskScore'] as num?)?.toInt() ?? 0,
+        trackingRiskLabel:
+            value['trackingRiskLabel']?.toString() ?? 'No strong signals',
+        trackingSimilarity:
+            (value['trackingSimilarity'] as num?)?.toDouble() ?? 0,
+        trackingSignals:
+            (value['trackingSignals'] as List<Object?>? ?? const [])
+                .map((signal) => signal.toString())
+                .toList(),
+        trackingReasons:
+            (value['trackingReasons'] as List<Object?>? ?? const [])
+                .map((reason) => reason.toString())
+                .toList(),
+        transcript: value['transcript']?.toString() ?? '',
+      );
+}
+
 class CloudSafetyAssessment {
   const CloudSafetyAssessment({
     required this.risk,

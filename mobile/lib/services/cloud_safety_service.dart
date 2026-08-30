@@ -130,6 +130,26 @@ class CloudSafetyService {
     return SecurityAnalysis.fromJson(value);
   }
 
+  /// Creates a Kavasam Link room and returns its six-digit code.
+  Future<String> createLinkRoom(String deviceId) async {
+    final value = await _postJson('/v1/link/rooms', {'deviceId': deviceId});
+    final code = value['code']?.toString() ?? '';
+    if (code.isEmpty) {
+      throw const CloudSafetyException('The gateway did not return a code.');
+    }
+    return code;
+  }
+
+  /// WebSocket URL for a link room, derived from the gateway base URL.
+  String linkSocketUrl(String code, String role) {
+    final base = _validatedBase();
+    final scheme = base.scheme == 'https' ? 'wss' : 'ws';
+    return base
+        .replace(scheme: scheme, path: '/v1/link/ws/$code')
+        .replace(queryParameters: {'role': role})
+        .toString();
+  }
+
   Future<GuardianEnrollment> enrollGuardian({
     required String deviceId,
     required String guardianPhone,
@@ -282,14 +302,21 @@ class CloudSafetyService {
     final base = Uri.tryParse(baseUrl);
     if (base == null ||
         !base.hasScheme ||
-        (base.scheme != 'https' &&
-            base.host != 'localhost' &&
-            base.host != '127.0.0.1')) {
+        (base.scheme != 'https' && !_isPrivateHost(base.host))) {
       throw const CloudSafetyException(
-        'The cloud gateway must use HTTPS (localhost is allowed for development).',
+        'The cloud gateway must use HTTPS (localhost and private LAN '
+        'addresses are allowed for development).',
       );
     }
     return base;
+  }
+
+  static bool _isPrivateHost(String host) {
+    if (host == 'localhost' || host == '127.0.0.1') return true;
+    // Hotspot/LAN demo setups run the gateway on a private IPv4 address.
+    return RegExp(
+      r'^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)[0-9.]+$',
+    ).hasMatch(host);
   }
 
   Future<Map<String, Object?>> _readJson(HttpClientResponse response) async {

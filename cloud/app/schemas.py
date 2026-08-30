@@ -186,6 +186,20 @@ class CommunityReputationResponse(BaseModel):
     source: Literal["community", "none"]
 
 
+class LinkRoomRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    deviceId: UUID = Field(strict=False)
+
+
+class LinkRoomResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(pattern=r"^[0-9]{6}$")
+    expiresInSeconds: int = Field(ge=1)
+    sampleRate: Literal[16000] = 16000
+
+
 GuardianState = Literal["pending", "verified", "approved", "rejected", "expired"]
 
 

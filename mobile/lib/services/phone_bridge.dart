@@ -5,12 +5,17 @@ import 'package:kavasam_mobile/models/phone.dart';
 import 'package:kavasam_mobile/models/security_analysis.dart';
 
 class PhoneBridge {
-  PhoneBridge({MethodChannel? channel, EventChannel? callEvents})
-    : _channel = channel ?? const MethodChannel('app.kavasam/offline_phone'),
-      _callEvents = callEvents ?? const EventChannel('app.kavasam/call_events');
+  PhoneBridge({
+    MethodChannel? channel,
+    EventChannel? callEvents,
+    EventChannel? linkEvents,
+  }) : _channel = channel ?? const MethodChannel('app.kavasam/offline_phone'),
+       _callEvents = callEvents ?? const EventChannel('app.kavasam/call_events'),
+       _linkEvents = linkEvents ?? const EventChannel('app.kavasam/link_events');
 
   final MethodChannel _channel;
   final EventChannel _callEvents;
+  final EventChannel _linkEvents;
 
   Future<DialerStatus> getDialerStatus() async {
     final value = await _map('getDialerStatus');
@@ -205,6 +210,32 @@ class PhoneBridge {
   Future<bool> requestMicPermission() => _bool('requestMicPermission');
   Future<bool> setAudioCapture(bool value) =>
       _bool('setAudioCapture', {'value': value});
+
+  Future<bool> linkStart({
+    required String wsUrl,
+    required String code,
+    required String role,
+  }) => _bool('linkStart', {'wsUrl': wsUrl, 'code': code, 'role': role});
+  Future<bool> linkEnd() => _bool('linkEnd');
+  Future<bool> linkSetMuted(bool value) =>
+      _bool('linkSetMuted', {'value': value});
+  Future<bool> linkSetSpeaker(bool value) =>
+      _bool('linkSetSpeaker', {'value': value});
+  Future<bool> linkAddSignal(String signal) =>
+      _bool('linkAddSignal', {'signal': signal});
+
+  Future<LinkCallSnapshot?> getLinkSnapshot() async {
+    final value = await _map('linkSnapshot');
+    return value == null ? null : LinkCallSnapshot.fromMap(value);
+  }
+
+  Stream<LinkCallSnapshot?> watchLinkCall() {
+    if (!Platform.isAndroid) return const Stream.empty();
+    return _linkEvents.receiveBroadcastStream().map((value) {
+      if (value == null) return null;
+      return LinkCallSnapshot.fromMap(Map<Object?, Object?>.from(value as Map));
+    });
+  }
   Future<bool> addSafetySignal(String signal) =>
       _bool('addSafetySignal', {'signal': signal});
   Future<bool> getCloudConsent() => _bool('getCloudConsent');

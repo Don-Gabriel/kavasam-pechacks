@@ -102,6 +102,20 @@ class MainActivity : FlutterActivity() {
                 }
             },
         )
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            LINK_EVENTS_CHANNEL,
+        ).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    LinkCallEngine.setEventSink(events)
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    LinkCallEngine.setEventSink(null)
+                }
+            },
+        )
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_NAME,
@@ -274,6 +288,29 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "requestMicPermission" -> requestMicPermission(result)
+                "linkStart" -> result.success(
+                    if (!hasMicPermission()) {
+                        false
+                    } else {
+                        LinkCallEngine.start(
+                            this,
+                            call.argument<String>("wsUrl").orEmpty(),
+                            call.argument<String>("code").orEmpty(),
+                            call.argument<String>("role").orEmpty(),
+                        )
+                    },
+                )
+                "linkEnd" -> result.success(LinkCallEngine.end())
+                "linkSetMuted" -> result.success(
+                    LinkCallEngine.setMuted(call.argument<Boolean>("value") == true),
+                )
+                "linkSetSpeaker" -> result.success(
+                    LinkCallEngine.setSpeaker(this, call.argument<Boolean>("value") == true),
+                )
+                "linkAddSignal" -> result.success(
+                    LinkCallEngine.addSignal(this, call.argument<String>("signal").orEmpty()),
+                )
+                "linkSnapshot" -> result.success(LinkCallEngine.snapshot())
                 "setAudioCapture" -> result.success(
                     if (call.argument<Boolean>("value") == true && !hasMicPermission()) {
                         false
@@ -583,6 +620,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL_NAME = "app.kavasam/offline_phone"
         private const val CALL_EVENTS_CHANNEL = "app.kavasam/call_events"
+        private const val LINK_EVENTS_CHANNEL = "app.kavasam/link_events"
         private const val PRIVACY_PREFERENCES = "kavasam_privacy"
         private const val CLOUD_CONSENT_KEY = "cloud_ai_consent"
         private const val COMMUNITY_CONSENT_KEY = "community_reputation_consent"

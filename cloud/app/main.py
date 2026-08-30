@@ -12,6 +12,7 @@ from .actian_vector import ActianVectorStore, augment_with_actian
 from .analyzer import GeminiAnalyzer
 from .content_analysis import ContentAnalyzer
 from .guardian import GuardianApprovalStore
+from .link import router as link_router
 from .reputation import CommunityReputationStore
 from .snowflake_analytics import AnalyticsEvent, SnowflakeAnalytics
 from .schemas import (
@@ -43,6 +44,7 @@ app = FastAPI(
     version="1.0.0",
     description="Consent gateway for redacted AI safety and tokenized community reputation.",
 )
+app.include_router(link_router)
 analyzer = GeminiAnalyzer()
 actian = ActianVectorStore()
 reputation = CommunityReputationStore()

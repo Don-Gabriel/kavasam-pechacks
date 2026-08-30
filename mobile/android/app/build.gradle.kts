@@ -40,6 +40,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // WebSocket client for the Kavasam Link in-app call relay.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+}
+
 flutter {
     source = "../.."
 }

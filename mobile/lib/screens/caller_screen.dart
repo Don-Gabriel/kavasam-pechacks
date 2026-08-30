@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/models/phone.dart';
 import 'package:kavasam_mobile/screens/guardian_screen.dart';
+import 'package:kavasam_mobile/screens/link_call_screen.dart';
 import 'package:kavasam_mobile/screens/security_analysis_screen.dart';
 import 'package:kavasam_mobile/services/cloud_safety_service.dart';
 import 'package:kavasam_mobile/services/phone_bridge.dart';
@@ -683,6 +684,20 @@ class _CallerScreenState extends State<CallerScreen>
           style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Kavasam Link call',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LinkCallScreen(
+                  bridge: widget.bridge,
+                  cloudSafety: _cloudSafety,
+                  deviceId: _reporterId,
+                  safetySignals: _safetySignals,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.podcasts_rounded),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: Chip(

@@ -24,10 +24,11 @@ The project is designed around one rule: **cloud intelligence may improve safety
 | Snowflake analytics | Integrated | Metadata-only, asynchronous, and fail-open; requires valid key-pair configuration |
 | Render deployment | Demo-ready | Free Blueprint included; gateway data is ephemeral |
 | Cellular-call recording | Not supported | Deliberately excluded; normal Android apps cannot reliably capture the carrier voice stream |
-| In-call speech transcript | Experimental | Consent-gated microphone speech-to-text on the device; text only, digits masked before optional cloud analysis; speakerphone recommended so the caller is heard |
+| In-call speech transcript | Experimental | Consent-gated microphone speech-to-text on the device; text only, digits masked before optional cloud analysis; Android silences in-call mic capture on many devices, so cellular calls may yield no text |
+| Kavasam Link in-app call | Experimental | Phone-to-phone call relayed by the gateway with live two-sided Gemini transcription and scam scoring; both phones must reach the same gateway (hotspot/LAN or hosted) |
 | Production signing | Required before release | Debug signing is used for development builds |
 
-Current mobile version: **5.1.0**.
+Current mobile version: **5.2.0**.
 
 ## Features
 
