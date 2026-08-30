@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:kavasam_mobile/models/security_analysis.dart';
+import 'package:kavasam_mobile/services/cloud_safety_service.dart';
+import 'package:kavasam_mobile/services/phone_bridge.dart';
+import 'package:kavasam_mobile/widgets/speak_warning_button.dart';
 
 /// Shared risk-report card used by the security analysis tab, the QR report
 /// screen, and per-link results, so every surface renders verdicts the same way.
@@ -9,11 +12,18 @@ class AnalysisResultView extends StatelessWidget {
     required this.result,
     this.title,
     this.compact = false,
+    this.bridge,
+    this.service,
   });
 
   final SecurityAnalysis result;
   final String? title;
   final bool compact;
+
+  /// When both are provided, a "Warn aloud" button appears on the risk-score
+  /// row so the verdict can be read out in English or Tamil.
+  final PhoneBridge? bridge;
+  final CloudSafetyService? service;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +68,15 @@ class AnalysisResultView extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (bridge != null && service != null) ...[
+                  const SizedBox(width: 8),
+                  SpeakWarningButton(
+                    bridge: bridge!,
+                    service: service!,
+                    text: result.summary,
+                    compact: true,
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 8),

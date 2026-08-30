@@ -11,11 +11,20 @@ class SpeakWarningButton extends StatefulWidget {
     required this.bridge,
     required this.service,
     required this.text,
+    this.compact = false,
+    this.onColor,
   });
 
   final PhoneBridge bridge;
   final CloudSafetyService service;
   final String text;
+
+  /// Compact renders a single header-friendly "Warn aloud" button with an
+  /// English/Tamil menu; the full form shows both language chips inline.
+  final bool compact;
+
+  /// Foreground colour for use on dark call cards.
+  final Color? onColor;
 
   @override
   State<SpeakWarningButton> createState() => _SpeakWarningButtonState();
@@ -52,7 +61,64 @@ class _SpeakWarningButtonState extends State<SpeakWarningButton> {
   }
 
   @override
-  Widget build(BuildContext context) => Wrap(
+  Widget build(BuildContext context) {
+    if (widget.compact) return _compact(context);
+    return _full();
+  }
+
+  Widget _compact(BuildContext context) {
+    final color = widget.onColor;
+    final busy = _busyLanguage != null;
+    return PopupMenuButton<String>(
+      enabled: !busy,
+      onSelected: _warn,
+      tooltip: 'Warn aloud',
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'en', child: Text('English')),
+        PopupMenuItem(value: 'ta', child: Text('தமிழ்')),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: (color ?? Theme.of(context).colorScheme.primary).withValues(
+            alpha: color != null ? 0.18 : 0.10,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: (color ?? Theme.of(context).colorScheme.primary).withValues(
+              alpha: 0.6,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            busy
+                ? SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: color,
+                    ),
+                  )
+                : Icon(Icons.volume_up_rounded, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              'Warn aloud',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down_rounded, size: 18, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _full() => Wrap(
     crossAxisAlignment: WrapCrossAlignment.center,
     spacing: 8,
     children: [
